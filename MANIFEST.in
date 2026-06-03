@@ -1,0 +1,7 @@
+include README.md
+include go.mod
+graft cmd
+graft internal
+graft src
+global-exclude __pycache__
+global-exclude *.py[cod]

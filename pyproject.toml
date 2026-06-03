@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skills-cli"
+version = "0.1.0"
+description = "Native Go CLI for installing agent skills"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [
+  { name = "Travis DeShazo" },
+]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Go",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Build Tools",
+]
+
+[project.scripts]
+goskill = "skills_cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["skills_cli*"]
+
+[tool.setuptools.package-data]
+skills_cli = ["bin/goskill", "bin/goskill.exe"]
