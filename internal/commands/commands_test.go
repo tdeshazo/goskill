@@ -300,7 +300,7 @@ func TestSkillSelectionModelRendersResolvedSourceLabel(t *testing.T) {
 	if !strings.Contains(view, "Source:") {
 		t.Fatalf("view missing source label: %s", view)
 	}
-	if !strings.Contains(view, "github.com/example/repo") {
+	if !strings.Contains(strings.ReplaceAll(view, "\\", "/"), "github.com/example/repo") {
 		t.Fatalf("view missing resolved source: %s", view)
 	}
 }
