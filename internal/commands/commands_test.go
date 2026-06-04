@@ -11,6 +11,7 @@ import (
 	"github.com/tdeshazo/goskill/internal/agents"
 	"github.com/tdeshazo/goskill/internal/installer"
 	"github.com/tdeshazo/goskill/internal/skills"
+	"github.com/tdeshazo/goskill/internal/source"
 )
 
 func TestAddListRemoveLocalSkill(t *testing.T) {
@@ -75,6 +76,46 @@ func TestListUsesDecoratedOutput(t *testing.T) {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("decorated list missing %q: %s", want, rendered)
 		}
+	}
+}
+
+func TestListGroupsProjectAndGlobalSkills(t *testing.T) {
+	project := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+
+	projectSource := makeSkill(t, t.TempDir(), "project-demo", "Local skill")
+	globalSource := makeSkill(t, t.TempDir(), "global-demo", "Shared skill")
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: project}
+	if err := app.Run([]string{"add", projectSource, "-y", "-a", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := app.Run([]string{"add", globalSource, "-g", "-y", "-a", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+
+	out.Reset()
+	if err := app.Run([]string{"list"}); err != nil {
+		t.Fatal(err)
+	}
+	rendered := out.String()
+	projectIdx := strings.Index(rendered, "Project")
+	globalIdx := strings.Index(rendered, "Global")
+	if projectIdx < 0 || globalIdx < 0 {
+		t.Fatalf("expected project and global groups:\n%s", rendered)
+	}
+	if projectIdx > globalIdx {
+		t.Fatalf("project group should render before global group:\n%s", rendered)
+	}
+	if strings.Count(rendered, "Project") != 1 || strings.Count(rendered, "Global") != 1 {
+		t.Fatalf("expected one project and one global group:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "project-demo") || !strings.Contains(rendered, "global-demo") {
+		t.Fatalf("missing listed skills:\n%s", rendered)
 	}
 }
 
@@ -203,6 +244,9 @@ func TestSkillSelectionModelGroupsByTopLevelPluginField(t *testing.T) {
 	if !strings.Contains(view, "Quality") {
 		t.Fatalf("expected group heading for quality, got: %s", view)
 	}
+	if !strings.Contains(view, selectorBar()+"\n"+selectorGroupLine("Quality", model.width)) {
+		t.Fatalf("expected blank line before second group heading, got: %s", view)
+	}
 }
 
 func TestSkillSelectionModelGroupsByNestedRepoFolders(t *testing.T) {
@@ -218,6 +262,27 @@ func TestSkillSelectionModelGroupsByNestedRepoFolders(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Fatalf("expected nested folder heading %q, got: %s", want, view)
 		}
+	}
+}
+
+func TestSkillDiscoveryListUsesSelectorGroupHeaders(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "frontend-design", Description: "Review UI", Metadata: map[string]any{"plugin": "agent-skills"}},
+		{Name: "code-review", Description: "Review code", Metadata: map[string]any{"plugin": "quality"}},
+		{Name: "react", Description: "Frontend skill", RepoPath: "skills/frontend/react/SKILL.md"},
+	}
+
+	view := renderSkillDiscoveryList(discovered, "Discovered skills")
+	for _, want := range []string{"Agent Skills", "Quality", "Frontend"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected group heading %q, got: %s", want, view)
+		}
+	}
+	if !strings.Contains(view, selectorBar()+"\n"+selectorGroupLine("Frontend", 88)) {
+		t.Fatalf("expected blank line before later group heading, got: %s", view)
+	}
+	if !strings.Contains(view, "frontend-design") || !strings.Contains(view, "code-review") || !strings.Contains(view, "react") {
+		t.Fatalf("expected discovered skills, got: %s", view)
 	}
 }
 
@@ -294,14 +359,34 @@ func TestSkillSelectionModelShowsDescriptionOnlyForCursor(t *testing.T) {
 
 func TestSkillSelectionModelRendersResolvedSourceLabel(t *testing.T) {
 	discovered := []skills.Skill{{Name: "alpha", Description: "First skill"}}
-	model := newSkillSelectionModel(discovered, "github.com/example/repo")
+	model := newSkillSelectionModel(discovered, "https://github.com/example/repo")
 
 	view := model.renderActive()
 	if !strings.Contains(view, "Source:") {
 		t.Fatalf("view missing source label: %s", view)
 	}
-	if !strings.Contains(strings.ReplaceAll(view, "\\", "/"), "github.com/example/repo") {
+	if !strings.Contains(view, "https://github.com/example/repo") {
 		t.Fatalf("view missing resolved source: %s", view)
+	}
+}
+
+func TestSkillSelectorSourceLabelShowsFullGitHubURL(t *testing.T) {
+	parsed, err := source.Parse("vercel-labs/agent-skills")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := skillSelectorSourceLabel(parsed, "vercel-labs/agent-skills", t.TempDir()), "https://github.com/vercel-labs/agent-skills"; got != want {
+		t.Fatalf("source label = %q, want %q", got, want)
+	}
+}
+
+func TestSkillSelectorSourceLabelPreservesGitHubTreeURL(t *testing.T) {
+	parsed, err := source.Parse("https://github.com/acme/repo/tree/main/skills/demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := skillSelectorSourceLabel(parsed, "https://github.com/acme/repo/tree/main/skills/demo", t.TempDir()), "https://github.com/acme/repo/tree/main/skills/demo"; got != want {
+		t.Fatalf("source label = %q, want %q", got, want)
 	}
 }
 

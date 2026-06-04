@@ -14,6 +14,7 @@ import (
 	"github.com/tdeshazo/goskill/internal/agents"
 	"github.com/tdeshazo/goskill/internal/installer"
 	"github.com/tdeshazo/goskill/internal/skills"
+	"github.com/tdeshazo/goskill/internal/source"
 )
 
 const skillSelectorMaxVisible = 8
@@ -68,7 +69,7 @@ func (a App) canUseInteractiveSelector() bool {
 }
 
 func (a App) selectSkillsInteractive(discovered []skills.Skill, source string, opts AddOptions, targets []agents.Type, mode installer.Mode) ([]skills.Skill, error) {
-	model := newSkillSelectionModel(discovered, shorten(source, a.Cwd), selectorInstallContext{
+	model := newSkillSelectionModel(discovered, source, selectorInstallContext{
 		targets: targets,
 		global:  opts.Global,
 		cwd:     a.Cwd,
@@ -108,6 +109,18 @@ func newSkillSelectionModel(discovered []skills.Skill, source string, contexts .
 		}
 	}
 
+	sorted := sortedSkillsByGroup(discovered)
+
+	return skillSelectionModel{
+		source:   source,
+		skills:   sorted,
+		selected: map[int]bool{},
+		width:    88,
+		install:  context,
+	}
+}
+
+func sortedSkillsByGroup(discovered []skills.Skill) []skills.Skill {
 	sorted := append([]skills.Skill(nil), discovered...)
 	sort.Slice(sorted, func(i, j int) bool {
 		ai := skillGroup(sorted[i])
@@ -117,14 +130,7 @@ func newSkillSelectionModel(discovered []skills.Skill, source string, contexts .
 		}
 		return ai < aj
 	})
-
-	return skillSelectionModel{
-		source:   source,
-		skills:   sorted,
-		selected: map[int]bool{},
-		width:    88,
-		install:  context,
-	}
+	return sorted
 }
 
 func (m skillSelectionModel) Init() tea.Cmd {
@@ -224,7 +230,7 @@ func (m skillSelectionModel) renderActive() string {
 	lines := []string{
 		selectorActiveStyle.Render("◆") + "  " + selectorTitleStyle.Render("Select skills to install") + " " + selectorHintStyle.Render("(space to toggle)"),
 		selectorBar(),
-		fmt.Sprintf("%s  %s %s %s", selectorBar(), selectorHintStyle.Render("Source:"), selectorPathStyle.Render(shortSelectionPath(m.source)), selectorHintStyle.Render(fmt.Sprintf("(%d skills discovered)", len(m.skills)))),
+		fmt.Sprintf("%s  %s %s %s", selectorBar(), selectorHintStyle.Render("Source:"), selectorPathStyle.Render(m.source), selectorHintStyle.Render(fmt.Sprintf("(%d skills discovered)", len(m.skills)))),
 		fmt.Sprintf("%s  %s %s%s", selectorBar(), selectorSearchStyle.Render("Search:"), m.query, selectorQueryCursor.Render(" ")),
 		fmt.Sprintf("%s  %s", selectorBar(), selectorHintStyle.Render("↑↓ move, space select, enter confirm, esc/ctrl+c cancel")),
 		selectorBar(),
@@ -242,6 +248,9 @@ func (m skillSelectionModel) renderActive() string {
 			skill := m.skills[skillIndex]
 			group := skillGroup(skill)
 			if group != lastGroup {
+				if lastGroup != "" {
+					lines = append(lines, selectorBar())
+				}
 				lines = append(lines, selectorGroupLine(titleCase(group), m.width))
 				lastGroup = group
 			}
@@ -547,6 +556,38 @@ func shortSelectionPath(path string) string {
 		}
 	}
 	return path
+}
+
+func skillSelectorSourceLabel(parsed source.Parsed, rawSource, cwd string) string {
+	if parsed.Type == source.Local {
+		return shorten(parsed.LocalPath, cwd)
+	}
+	if parsed.Type == source.GitHub {
+		if ownerRepo := source.OwnerRepo(parsed); ownerRepo != "" {
+			return sourceWebURL("https://github.com/"+ownerRepo, "tree", parsed.Ref, parsed.Subpath)
+		}
+	}
+	if parsed.Type == source.GitLab {
+		if ownerRepo := source.OwnerRepo(parsed); ownerRepo != "" {
+			return sourceWebURL("https://gitlab.com/"+ownerRepo, "-/tree", parsed.Ref, parsed.Subpath)
+		}
+	}
+	if parsed.URL != "" {
+		return strings.TrimSuffix(strings.TrimSuffix(parsed.URL, ".git"), "/")
+	}
+	return rawSource
+}
+
+func sourceWebURL(base, treeSegment, ref, subpath string) string {
+	base = strings.TrimSuffix(strings.TrimSuffix(base, ".git"), "/")
+	if ref == "" {
+		return base
+	}
+	out := base + "/" + treeSegment + "/" + ref
+	if subpath != "" {
+		out += "/" + strings.TrimPrefix(subpath, "/")
+	}
+	return out
 }
 
 func truncateDisplay(s string, width int) string {

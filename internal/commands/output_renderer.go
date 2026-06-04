@@ -92,16 +92,28 @@ func renderHelp() string {
 
 func renderSkillDiscoveryList(list []skills.Skill, title string) string {
 	lines := []string{
+		selectorActiveStyle.Render("◆") + "  " + selectorTitleStyle.Render(title),
+		selectorBar(),
 		selectorHintStyle.Render(fmt.Sprintf("%d skill%s found", len(list), skillPlural(len(list)))),
 		selectorBar(),
 	}
-	for _, skill := range list {
-		lines = append(lines, fmt.Sprintf("%s %s", selectorSelected.Render("●"), selectorTitleStyle.Render(skill.Name)))
+	lastGroup := ""
+	for _, skill := range sortedSkillsByGroup(list) {
+		group := skillGroup(skill)
+		if group != lastGroup {
+			if lastGroup != "" {
+				lines = append(lines, selectorBar())
+			}
+			lines = append(lines, selectorGroupLine(titleCase(group), 88))
+			lastGroup = group
+		}
+		lines = append(lines, fmt.Sprintf("%s %s %s", selectorBar(), selectorSelected.Render("●"), selectorTitleStyle.Render(skill.Name)))
 		if skill.Description != "" {
-			lines = append(lines, "  "+selectorHintStyle.Render(skill.Description))
+			lines = append(lines, fmt.Sprintf("%s   %s", selectorBar(), selectorHintStyle.Render(skill.Description)))
 		}
 	}
-	return renderInfo(title, lines...)
+	lines = append(lines, selectorBarStyle.Render("└"))
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func renderSkillSelectionPrompt(discovered []skills.Skill) string {

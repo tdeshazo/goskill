@@ -139,7 +139,7 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 			fmt.Fprint(a.Stdout, renderSkillDiscoveryList(resolved.skills, "Discovered skills"))
 			continue
 		}
-		selected, err := a.selectSkills(resolved.skills, resolved.sourceID, opts, targets, mode)
+		selected, err := a.selectSkills(resolved.skills, skillSelectorSourceLabel(parsed, rawSource, a.Cwd), opts, targets, mode)
 		if err != nil {
 			return err
 		}
@@ -309,7 +309,12 @@ func (a App) List(args []string) error {
 	if err != nil {
 		return err
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+	sort.Slice(list, func(i, j int) bool {
+		if orderI, orderJ := listScopeOrder(list[i].Scope), listScopeOrder(list[j].Scope); orderI != orderJ {
+			return orderI < orderJ
+		}
+		return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name)
+	})
 	if jsonOut {
 		type outSkill struct {
 			Name   string   `json:"name"`
@@ -331,6 +336,17 @@ func (a App) List(args []string) error {
 	}
 	fmt.Fprint(a.Stdout, renderSkillList(list, a.Cwd))
 	return nil
+}
+
+func listScopeOrder(scope string) int {
+	switch strings.ToLower(scope) {
+	case "project":
+		return 0
+	case "global":
+		return 1
+	default:
+		return 2
+	}
 }
 
 func (a App) Remove(skillNames []string, opts RemoveOptions) error {
