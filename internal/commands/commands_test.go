@@ -14,6 +14,22 @@ import (
 	"github.com/tdeshazo/goskill/internal/source"
 )
 
+func TestMain(m *testing.M) {
+	home, err := os.MkdirTemp("", "goskill-command-test-home-")
+	if err != nil {
+		os.Exit(1)
+	}
+	_ = os.Setenv("HOME", home)
+	_ = os.Setenv("USERPROFILE", home)
+	_ = os.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+	_ = os.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	_ = os.Setenv("XDG_STATE_HOME", filepath.Join(home, ".state"))
+
+	code := m.Run()
+	_ = os.RemoveAll(home)
+	os.Exit(code)
+}
+
 func TestAddListRemoveLocalSkill(t *testing.T) {
 	project := t.TempDir()
 	source := makeSkill(t, t.TempDir(), "demo", "Demo skill")

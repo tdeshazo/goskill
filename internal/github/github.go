@@ -281,7 +281,10 @@ func fetchRawSkillMD(ownerRepo, branch, skillPath string) (string, bool) {
 	u := fmt.Sprintf("%s/%s/%s/%s", rawBase, ownerRepo, url.PathEscape(branch), skillPath)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return "", false
+	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", false
@@ -307,7 +310,10 @@ func fetchDownload(source, slug string) (DownloadResponse, bool) {
 func fetchJSON(u, token string, out any) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return false
+	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "skills-cli-go")
 	if token != "" {

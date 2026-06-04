@@ -188,7 +188,10 @@ func yamlDescription(files []skills.SnapshotFile) (string, bool) {
 func fetchBytes(u string) ([]byte, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, false
+	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, false

@@ -161,7 +161,10 @@ func fetchLatestRelease() (releaseInfo, bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), updateCheckTimeout())
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return releaseInfo{}, false
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "goskill")
 	if token := first(os.Getenv("GITHUB_TOKEN"), os.Getenv("GH_TOKEN")); token != "" {
