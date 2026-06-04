@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/tdeshazo/goskill/internal/agents"
 	"github.com/tdeshazo/goskill/internal/installer"
 	"github.com/tdeshazo/goskill/internal/skills"
@@ -251,27 +249,6 @@ func TestSkillsWithRepoPathsAddsRelativeSkillMDPath(t *testing.T) {
 	}
 }
 
-func TestSkillSelectionModelJAndKUpdateSearch(t *testing.T) {
-	discovered := []skills.Skill{
-		{Name: "alpha", Description: "First skill"},
-		{Name: "beta", Description: "Second skill"},
-	}
-	model := newSkillSelectionModel(discovered, "source")
-	model.cursor = 1
-
-	updated, _ := model.Update(tea.KeyPressMsg{Text: "j", Code: 'j'})
-	model = updated.(skillSelectionModel)
-	updated, _ = model.Update(tea.KeyPressMsg{Text: "k", Code: 'k'})
-	model = updated.(skillSelectionModel)
-
-	if model.query != "jk" {
-		t.Fatalf("query = %q, want jk", model.query)
-	}
-	if model.cursor != 0 {
-		t.Fatalf("cursor = %d, want 0 after search input", model.cursor)
-	}
-}
-
 func TestSkillResolveSpinnerRendersAndClearsLine(t *testing.T) {
 	var out bytes.Buffer
 
@@ -287,40 +264,6 @@ func TestSkillResolveSpinnerRendersAndClearsLine(t *testing.T) {
 	}
 	if !strings.HasSuffix(got, "\r\x1b[2K") {
 		t.Fatalf("spinner output should clear the line, got %q", got)
-	}
-}
-
-func TestSkillSelectionModelEscCancels(t *testing.T) {
-	discovered := []skills.Skill{
-		{Name: "alpha", Description: "First skill"},
-	}
-	model := newSkillSelectionModel(discovered, "source")
-
-	updated, cmd := model.Update(tea.KeyPressMsg{Text: "esc", Code: 0})
-	model = updated.(skillSelectionModel)
-
-	if !model.cancelled {
-		t.Fatal("esc should cancel the selector")
-	}
-	if cmd == nil {
-		t.Fatal("esc should quit the selector")
-	}
-}
-
-func TestSkillSelectionModelQDoesNotCancel(t *testing.T) {
-	discovered := []skills.Skill{
-		{Name: "alpha", Description: "First skill"},
-	}
-	model := newSkillSelectionModel(discovered, "source")
-
-	updated, cmd := model.Update(tea.KeyPressMsg{Text: "q", Code: 'q'})
-	model = updated.(skillSelectionModel)
-
-	if model.cancelled {
-		t.Fatal("q should not cancel the selector")
-	}
-	if cmd != nil {
-		t.Fatal("q should not quit the selector")
 	}
 }
 

@@ -10,7 +10,7 @@ func TestYAMLDescriptionUsesSkillFrontmatter(t *testing.T) {
 	files := []skills.SnapshotFile{
 		{
 			Path:     "SKILL.md",
-			Contents: "---\nname: bubbletea\ndescription: YAML description\n---\n\n# Body\n\nLong body text.",
+			Contents: "---\nname: demo-skill\ndescription: YAML description\n---\n\n# Body\n\nLong body text.",
 		},
 	}
 
