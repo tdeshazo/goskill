@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -143,43 +142,85 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 		if err != nil {
 			return err
 		}
-		for _, skill := range selected {
-			for _, agent := range targets {
-				result := installer.InstallSkill(skill, agent, opts.Global, a.Cwd, mode)
-				if !result.Success {
-					return fmt.Errorf("failed to install %s for %s: %w", skill.Name, agent, result.Err)
-				}
-			}
-			installed = append(installed, skill.Name)
-			if opts.Global {
-				_ = lockfile.AddGlobal(skill.Name, lockfile.GlobalEntry{
-					Source:          resolved.sourceID,
-					SourceType:      string(parsed.Type),
-					SourceURL:       rawSource,
-					Ref:             parsed.Ref,
-					SkillPath:       resolved.skillPath(skill),
-					SkillFolderHash: resolved.folderHash(skill),
-				})
-			} else {
-				hash := resolved.folderHash(skill)
-				if hash == "" {
-					installDir := installer.CanonicalPath(skill.Name, false, a.Cwd)
-					hash, _ = skills.FolderHash(installDir)
-				}
-				_ = lockfile.AddLocal(a.Cwd, skill.Name, lockfile.LocalEntry{
-					Source:       resolved.sourceID,
-					Ref:          parsed.Ref,
-					SourceType:   string(parsed.Type),
-					SkillPath:    resolved.skillPath(skill),
-					ComputedHash: hash,
-				})
-			}
+		sourceInstalled, err := a.installSelectedSkills(selected, addInstallContext{
+			rawSource: rawSource,
+			parsed:    parsed,
+			resolved:  resolved,
+			targets:   targets,
+			global:    opts.Global,
+			mode:      mode,
+		})
+		if err != nil {
+			return err
 		}
+		installed = append(installed, sourceInstalled...)
 	}
 	if len(installed) > 0 {
 		fmt.Fprint(a.Stdout, renderSuccess("Installed skills", fmt.Sprintf("%d skill%s installed", len(installed), skillPlural(len(installed))), selectorSummaryStyle.Render(strings.Join(installed, ", "))))
 	}
 	return nil
+}
+
+type addInstallContext struct {
+	rawSource string
+	parsed    source.Parsed
+	resolved  resolvedSkills
+	targets   []agents.Type
+	global    bool
+	mode      installer.Mode
+}
+
+func (a App) installSelectedSkills(selected []skills.Skill, ctx addInstallContext) ([]string, error) {
+	installed := make([]string, 0, len(selected))
+	for _, skill := range selected {
+		if err := a.installSkillForTargets(skill, ctx); err != nil {
+			return nil, err
+		}
+		installed = append(installed, skill.Name)
+		a.recordInstalledSkill(skill, ctx)
+	}
+	return installed, nil
+}
+
+func (a App) installSkillForTargets(skill skills.Skill, ctx addInstallContext) error {
+	for _, agent := range ctx.targets {
+		result := installer.InstallSkill(skill, agent, ctx.global, a.Cwd, ctx.mode)
+		if !result.Success {
+			return fmt.Errorf("failed to install %s for %s: %w", skill.Name, agent, result.Err)
+		}
+	}
+	return nil
+}
+
+func (a App) recordInstalledSkill(skill skills.Skill, ctx addInstallContext) {
+	if ctx.global {
+		_ = lockfile.AddGlobal(skill.Name, lockfile.GlobalEntry{
+			Source:          ctx.resolved.sourceID,
+			SourceType:      string(ctx.parsed.Type),
+			SourceURL:       ctx.rawSource,
+			Ref:             ctx.parsed.Ref,
+			SkillPath:       ctx.resolved.skillPath(skill),
+			SkillFolderHash: ctx.resolved.folderHash(skill),
+		})
+		return
+	}
+
+	_ = lockfile.AddLocal(a.Cwd, skill.Name, lockfile.LocalEntry{
+		Source:       ctx.resolved.sourceID,
+		Ref:          ctx.parsed.Ref,
+		SourceType:   string(ctx.parsed.Type),
+		SkillPath:    ctx.resolved.skillPath(skill),
+		ComputedHash: a.installedSkillHash(skill, ctx.resolved),
+	})
+}
+
+func (a App) installedSkillHash(skill skills.Skill, resolved resolvedSkills) string {
+	if hash := resolved.folderHash(skill); hash != "" {
+		return hash
+	}
+	installDir := installer.CanonicalPath(skill.Name, false, a.Cwd)
+	hash, _ := skills.FolderHash(installDir)
+	return hash
 }
 
 func (a App) selectSkills(discovered []skills.Skill, source string, opts AddOptions, targets []agents.Type, mode installer.Mode) ([]skills.Skill, error) {
@@ -962,8 +1003,6 @@ func (a App) banner() {
 }
 
 func (a App) help() {
-	fs := flag.NewFlagSet("skills", flag.ContinueOnError)
-	_ = fs
 	fmt.Fprint(a.Stdout, renderHelp())
 }
 
