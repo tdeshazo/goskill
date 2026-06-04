@@ -39,13 +39,8 @@ func TestWarnIfNewerRelease(t *testing.T) {
 			t.Fatalf("missing decorated warning element %q:\n%s", want, output)
 		}
 	}
-	for _, want := range []string{
-		selectorSuccessStyle.Bold(true).Render("0.2.0"),
-		selectorWarningStyle.Bold(true).Render("0.1.0"),
-	} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("missing styled version %q:\n%s", want, output)
-		}
+	if output != plain {
+		t.Fatalf("buffered stderr should not include ANSI escapes:\n%s", output)
 	}
 }
 

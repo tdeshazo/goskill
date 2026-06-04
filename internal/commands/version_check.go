@@ -42,7 +42,7 @@ func (a App) warnIfNewerRelease(cmd string) {
 	if releaseURL == "" {
 		releaseURL = "https://github.com/" + updateRepo() + "/releases/latest"
 	}
-	fmt.Fprint(a.Stderr, renderVersionWarning(normalizeVersion(latest), normalizeVersion(a.Version), releaseURL))
+	a.writeErr(renderVersionWarning(normalizeVersion(latest), normalizeVersion(a.Version), releaseURL))
 }
 
 func renderVersionWarning(latest, current, releaseURL string) string {

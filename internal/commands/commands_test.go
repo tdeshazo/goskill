@@ -12,6 +12,7 @@ import (
 	"github.com/tdeshazo/goskill/internal/installer"
 	"github.com/tdeshazo/goskill/internal/skills"
 	"github.com/tdeshazo/goskill/internal/source"
+	"github.com/tdeshazo/goskill/internal/terminal"
 )
 
 func TestMain(m *testing.M) {
@@ -28,6 +29,21 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	_ = os.RemoveAll(home)
 	os.Exit(code)
+}
+
+func TestBufferedOutputStripsANSIEscapes(t *testing.T) {
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Cwd: t.TempDir()}
+	if err := app.Run([]string{"--version"}); err != nil {
+		t.Fatal(err)
+	}
+	output := out.String()
+	if output != terminal.StripEscapes(output) {
+		t.Fatalf("buffered stdout should not include ANSI escapes:\n%s", output)
+	}
+	if !strings.Contains(output, "test") {
+		t.Fatalf("missing version in output:\n%s", output)
+	}
 }
 
 func TestAddListRemoveLocalSkill(t *testing.T) {

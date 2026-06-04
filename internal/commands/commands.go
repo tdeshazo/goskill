@@ -66,7 +66,7 @@ func (a App) Run(args []string) error {
 	case "--help", "-h", "help":
 		a.help()
 	case "--version", "-v":
-		fmt.Fprint(a.Stdout, renderVersionOutput(a.Version))
+		a.writeOut(renderVersionOutput(a.Version))
 	case "add", "a":
 		src, opts, err := parseAdd(rest)
 		if err != nil {
@@ -135,7 +135,7 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 			return err
 		}
 		if opts.List {
-			fmt.Fprint(a.Stdout, renderSkillDiscoveryList(resolved.skills, "Discovered skills"))
+			a.writeOut(renderSkillDiscoveryList(resolved.skills, "Discovered skills"))
 			continue
 		}
 		selected, err := a.selectSkills(resolved.skills, skillSelectorSourceLabel(parsed, rawSource, a.Cwd), opts, targets, mode)
@@ -143,7 +143,7 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 			return err
 		}
 		if report := securityReportForSkills(selected); len(report.Findings) > 0 {
-			fmt.Fprint(a.Stdout, renderSecurityWarnings(report, a.Cwd))
+			a.writeOut(renderSecurityWarnings(report, a.Cwd))
 		}
 		sourceInstalled, err := a.installSelectedSkills(selected, addInstallContext{
 			rawSource: rawSource,
@@ -159,7 +159,7 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 		installed = append(installed, sourceInstalled...)
 	}
 	if len(installed) > 0 {
-		fmt.Fprint(a.Stdout, renderSuccess("Installed skills", fmt.Sprintf("%d skill%s installed", len(installed), skillPlural(len(installed))), selectorSummaryStyle.Render(strings.Join(installed, ", "))))
+		a.writeOut(renderSuccess("Installed skills", fmt.Sprintf("%d skill%s installed", len(installed), skillPlural(len(installed))), selectorSummaryStyle.Render(strings.Join(installed, ", "))))
 	}
 	return nil
 }
@@ -253,7 +253,7 @@ func (a App) selectSkills(discovered []skills.Skill, source string, opts AddOpti
 		}
 	}
 
-	fmt.Fprint(a.Stdout, renderSkillSelectionPrompt(discovered))
+	a.writeOut(renderSkillSelectionPrompt(discovered))
 
 	scanner := bufio.NewScanner(a.Stdin)
 	if !scanner.Scan() {
@@ -378,7 +378,7 @@ func (a App) List(args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
 	}
-	fmt.Fprint(a.Stdout, renderSkillList(list, a.Cwd))
+	a.writeOut(renderSkillList(list, a.Cwd))
 	return nil
 }
 
@@ -411,7 +411,7 @@ func (a App) Remove(skillNames []string, opts RemoveOptions) error {
 		}
 	}
 	if len(skillNames) == 0 {
-		fmt.Fprint(a.Stdout, renderInfo("Remove skills", selectorHintStyle.Render("No skills found to remove.")))
+		a.writeOut(renderInfo("Remove skills", selectorHintStyle.Render("No skills found to remove.")))
 		return nil
 	}
 	for _, name := range skillNames {
@@ -424,7 +424,7 @@ func (a App) Remove(skillNames []string, opts RemoveOptions) error {
 			_ = lockfile.RemoveLocal(a.Cwd, name)
 		}
 	}
-	fmt.Fprint(a.Stdout, renderSuccess("Removed skills", fmt.Sprintf("%d skill%s removed", len(skillNames), skillPlural(len(skillNames)))))
+	a.writeOut(renderSuccess("Removed skills", fmt.Sprintf("%d skill%s removed", len(skillNames), skillPlural(len(skillNames)))))
 	return nil
 }
 
@@ -457,7 +457,7 @@ func (a App) Find(args []string) error {
 		}
 		return a.installFoundSkills(selected)
 	}
-	fmt.Fprint(a.Stdout, renderFindResults(query, payload.Skills))
+	a.writeOut(renderFindResults(query, payload.Skills))
 	return nil
 }
 
@@ -545,7 +545,7 @@ func (a App) Validate(args []string) error {
 			issueCount++
 		}
 	}
-	fmt.Fprint(a.Stdout, renderValidationResults(results, len(files), issueCount, a.Cwd))
+	a.writeOut(renderValidationResults(results, len(files), issueCount, a.Cwd))
 	if issueCount > 0 {
 		return fmt.Errorf("validation failed: %d issue(s)", issueCount)
 	}
@@ -660,7 +660,7 @@ func (a App) Init(args []string) error {
 	}
 	path := filepath.Join(dir, "SKILL.md")
 	if _, err := os.Stat(path); err == nil {
-		fmt.Fprint(a.Stdout, renderWarning("Init skill", fmt.Sprintf("Skill already exists at %s", selectorPathStyle.Render(display))))
+		a.writeOut(renderWarning("Init skill", fmt.Sprintf("Skill already exists at %s", selectorPathStyle.Render(display))))
 		return nil
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -670,14 +670,14 @@ func (a App) Init(args []string) error {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprint(a.Stdout, renderSuccess("Created skill", selectorPathStyle.Render(display)))
+	a.writeOut(renderSuccess("Created skill", selectorPathStyle.Render(display)))
 	return nil
 }
 
 func (a App) InstallFromLock(args []string) error {
 	lock := lockfile.ReadLocal(a.Cwd)
 	if len(lock.Skills) == 0 {
-		fmt.Fprint(a.Stdout, renderInfo("Install skills", selectorHintStyle.Render("No project skills found in skills-lock.json")))
+		a.writeOut(renderInfo("Install skills", selectorHintStyle.Render("No project skills found in skills-lock.json")))
 		return nil
 	}
 	for skillName, entry := range lock.Skills {
@@ -711,7 +711,7 @@ func (a App) Sync(args []string) error {
 	}
 	discovered := discoverNodeModuleSkills(a.Cwd)
 	if len(discovered) == 0 {
-		fmt.Fprint(a.Stdout, renderInfo("Sync skills", selectorHintStyle.Render("No SKILL.md files found in node_modules.")))
+		a.writeOut(renderInfo("Sync skills", selectorHintStyle.Render("No SKILL.md files found in node_modules.")))
 		return nil
 	}
 	local := lockfile.ReadLocal(a.Cwd)
@@ -736,7 +736,7 @@ func (a App) Sync(args []string) error {
 		hash, _ := skills.FolderHash(skill.Path)
 		_ = lockfile.AddLocal(a.Cwd, skill.Name, lockfile.LocalEntry{Source: skill.PackageName, SourceType: "node_modules", ComputedHash: hash})
 	}
-	fmt.Fprint(a.Stdout, renderSuccess("Synced skills", fmt.Sprintf("%d skill%s synced", len(toInstall), skillPlural(len(toInstall)))))
+	a.writeOut(renderSuccess("Synced skills", fmt.Sprintf("%d skill%s synced", len(toInstall), skillPlural(len(toInstall)))))
 	return nil
 }
 
@@ -760,7 +760,7 @@ func (a App) Check(args []string, doUpdate bool) error {
 			latest := github.SkillFolderHash(tree, entry.SkillPath)
 			if latest != "" && latest != entry.SkillFolderHash {
 				updates++
-				fmt.Fprint(a.Stdout, renderWarning("Update available", fmt.Sprintf("Update available: %s", name)))
+				a.writeOut(renderWarning("Update available", fmt.Sprintf("Update available: %s", name)))
 				if doUpdate {
 					sourceArg := entry.Source
 					if entry.Ref != "" {
@@ -798,9 +798,9 @@ func (a App) Check(args []string, doUpdate bool) error {
 		}
 	}
 	if !doUpdate {
-		fmt.Fprint(a.Stdout, renderInfo("Checked skills", fmt.Sprintf("%d skill%s checked", checked, skillPlural(checked)), fmt.Sprintf("%d update%s available", updates, skillPlural(updates))))
+		a.writeOut(renderInfo("Checked skills", fmt.Sprintf("%d skill%s checked", checked, skillPlural(checked)), fmt.Sprintf("%d update%s available", updates, skillPlural(updates))))
 	} else {
-		fmt.Fprint(a.Stdout, renderSuccess("Updated skills", fmt.Sprintf("%d skill%s updated", success, skillPlural(success))))
+		a.writeOut(renderSuccess("Updated skills", fmt.Sprintf("%d skill%s updated", success, skillPlural(success))))
 	}
 	return nil
 }
@@ -1071,11 +1071,11 @@ func discoverNodeModuleSkills(cwd string) []nodeSkill {
 }
 
 func (a App) banner() {
-	fmt.Fprint(a.Stdout, renderBanner())
+	a.writeOut(renderBanner())
 }
 
 func (a App) help() {
-	fmt.Fprint(a.Stdout, renderHelp())
+	a.writeOut(renderHelp())
 }
 
 func shorten(path, cwd string) string {
