@@ -142,6 +142,9 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 		if err != nil {
 			return err
 		}
+		if report := securityReportForSkills(selected); len(report.Findings) > 0 {
+			fmt.Fprint(a.Stdout, renderSecurityWarnings(report, a.Cwd))
+		}
 		sourceInstalled, err := a.installSelectedSkills(selected, addInstallContext{
 			rawSource: rawSource,
 			parsed:    parsed,
@@ -444,8 +447,51 @@ func (a App) Find(args []string) error {
 	if err := fetchJSON(u, &payload); err != nil {
 		return err
 	}
+	if a.canUseInteractiveSelector() && len(payload.Skills) > 0 {
+		selected, err := a.selectFindResultsInteractive(query, payload.Skills)
+		if err != nil {
+			return err
+		}
+		if len(selected) == 0 {
+			return nil
+		}
+		return a.installFoundSkills(selected)
+	}
 	fmt.Fprint(a.Stdout, renderFindResults(query, payload.Skills))
 	return nil
+}
+
+func (a App) installFoundSkills(selected []foundSkill) error {
+	for _, group := range foundSkillInstallGroups(selected) {
+		if strings.TrimSpace(group.source) == "" {
+			return fmt.Errorf("cannot install %s: missing source", strings.Join(group.skills, ", "))
+		}
+		if err := a.Add([]string{group.source}, AddOptions{Skill: group.skills, Yes: true}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type foundSkillInstallGroup struct {
+	source string
+	skills []string
+}
+
+func foundSkillInstallGroups(selected []foundSkill) []foundSkillInstallGroup {
+	indexBySource := map[string]int{}
+	groups := make([]foundSkillInstallGroup, 0, len(selected))
+	for _, skill := range selected {
+		source := strings.TrimSpace(skill.Source)
+		idx, ok := indexBySource[source]
+		if !ok {
+			indexBySource[source] = len(groups)
+			groups = append(groups, foundSkillInstallGroup{source: source})
+			idx = len(groups) - 1
+		}
+		groups[idx].skills = append(groups[idx].skills, skill.Name)
+	}
+	return groups
 }
 
 func (a App) Validate(args []string) error {
@@ -472,9 +518,11 @@ func (a App) Validate(args []string) error {
 	sort.Strings(files)
 	files = uniqueStrings(files)
 	issuesByPath := map[string][]skills.ValidationIssue{}
+	securityByPath := map[string]skills.SecurityReport{}
 	pathsByName := map[string][]string{}
 	for _, path := range files {
 		issuesByPath[path] = append(issuesByPath[path], skills.ValidateSkillMD(path)...)
+		securityByPath[path] = securityReportForSkillFile(path)
 		if name, ok := skills.SkillMDName(path); ok {
 			pathsByName[strings.ToLower(name)] = append(pathsByName[strings.ToLower(name)], path)
 		}
@@ -492,7 +540,7 @@ func (a App) Validate(args []string) error {
 	var results []validationResult
 	for _, path := range files {
 		issues := issuesByPath[path]
-		results = append(results, validationResult{Path: path, Issues: issues})
+		results = append(results, validationResult{Path: path, Issues: issues, Security: securityByPath[path]})
 		for range issues {
 			issueCount++
 		}
@@ -502,6 +550,30 @@ func (a App) Validate(args []string) error {
 		return fmt.Errorf("validation failed: %d issue(s)", issueCount)
 	}
 	return nil
+}
+
+func securityReportForSkills(list []skills.Skill) skills.SecurityReport {
+	reports := make([]skills.SecurityReport, 0, len(list))
+	for _, skill := range list {
+		reports = append(reports, skills.AnalyzeSkillSecurity(skill))
+	}
+	return skills.MergeSecurityReports(reports...)
+}
+
+func securityReportForSkillFile(path string) skills.SecurityReport {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return skills.SecurityReport{RiskLevel: skills.RiskNone}
+	}
+	name, ok := skills.SkillMDName(path)
+	if !ok {
+		name = filepath.Base(filepath.Dir(path))
+	}
+	return skills.AnalyzeSkillSecurity(skills.Skill{
+		Name:       name,
+		Path:       filepath.Dir(path),
+		RawContent: string(raw),
+	})
 }
 
 func (a App) validationSkillFiles(rawSource string) ([]string, func(), error) {

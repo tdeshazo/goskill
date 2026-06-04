@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/tdeshazo/goskill/internal/skills"
@@ -17,8 +18,9 @@ const (
 )
 
 type validationResult struct {
-	Path   string
-	Issues []skills.ValidationIssue
+	Path     string
+	Issues   []skills.ValidationIssue
+	Security skills.SecurityReport
 }
 
 func renderStatus(title string, lines []string, kind statusKind) string {
@@ -157,7 +159,7 @@ func renderValidationResults(results []validationResult, total int, issueCount i
 	lines := []string{}
 	for _, result := range results {
 		path := shorten(result.Path, cwd)
-		if len(result.Issues) == 0 {
+		if len(result.Issues) == 0 && len(result.Security.Findings) == 0 {
 			lines = append(lines, fmt.Sprintf("%s %s %s", selectorSuccessStyle.Render("●"), selectorTitleStyle.Render(path), selectorSuccessStyle.Render("OK")))
 			continue
 		}
@@ -165,10 +167,55 @@ func renderValidationResults(results []validationResult, total int, issueCount i
 		for _, issue := range result.Issues {
 			lines = append(lines, "  "+selectorWarningStyle.Render(issue.Message))
 		}
+		if len(result.Security.Findings) > 0 {
+			lines = append(lines, "  "+selectorWarningStyle.Render("Security warnings"))
+		}
+		for _, finding := range result.Security.Findings {
+			lines = append(lines, "  "+selectorWarningStyle.Render(formatSecurityFinding(finding, cwd)))
+		}
 	}
 	if issueCount > 0 {
 		return renderWarning("Validation failed", lines...)
 	}
 	lines = append(lines, selectorSuccessStyle.Render(fmt.Sprintf("Validated %d skill(s): OK", total)))
 	return renderSuccess("Validation", lines...)
+}
+
+func renderSecurityWarnings(report skills.SecurityReport, cwd string) string {
+	if len(report.Findings) == 0 {
+		return ""
+	}
+	lines := []string{
+		selectorWarningStyle.Render(fmt.Sprintf("Risk level: %s", report.RiskLevel)),
+		selectorHintStyle.Render(fmt.Sprintf("%d security warning%s found; review before trusting this skill.", len(report.Findings), skillPlural(len(report.Findings)))),
+		selectorBar(),
+	}
+	for _, finding := range report.Findings {
+		lines = append(lines, formatSecurityFinding(finding, cwd))
+	}
+	return renderWarning("Security warnings", lines...)
+}
+
+func formatSecurityFinding(finding skills.SecurityFinding, cwd string) string {
+	location := securityFindingLocation(finding, cwd)
+	return fmt.Sprintf("%s %s %s %s",
+		selectorWarningStyle.Render(string(finding.RiskLevel)),
+		selectorPathStyle.Render(finding.Category),
+		selectorTitleStyle.Render(location),
+		selectorHintStyle.Render(finding.Evidence),
+	)
+}
+
+func securityFindingLocation(finding skills.SecurityFinding, cwd string) string {
+	path := finding.Path
+	if filepath.IsAbs(path) {
+		path = shorten(path, cwd)
+	}
+	if finding.SkillName != "" {
+		path = finding.SkillName + "/" + path
+	}
+	if finding.Line > 0 {
+		path = fmt.Sprintf("%s:%d", path, finding.Line)
+	}
+	return path
 }

