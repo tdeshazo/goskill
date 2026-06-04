@@ -84,7 +84,7 @@ func ParseSkillMD(path string, includeInternal bool) (Skill, bool) {
 		Description: terminal.Metadata(desc),
 		Path:        filepath.Dir(path),
 		RawContent:  raw,
-		Metadata:    metadataFrom(data),
+		Metadata:    metadataFrom(data, "plugin", "pluginName", "source"),
 	}, true
 }
 
@@ -619,9 +619,22 @@ func splitLines(raw string) []string {
 	return strings.Split(raw, "\n")
 }
 
-func metadataFrom(data map[string]any) map[string]any {
+func metadataFrom(data map[string]any, keys ...string) map[string]any {
+	md := map[string]any{}
 	if metadata, ok := data["metadata"].(map[string]any); ok {
-		return metadata
+		for k, v := range metadata {
+			md[k] = v
+		}
 	}
-	return nil
+	for _, key := range keys {
+		if value, ok := data[key]; ok {
+			if _, exists := md[key]; !exists {
+				md[key] = value
+			}
+		}
+	}
+	if len(md) == 0 {
+		return nil
+	}
+	return md
 }

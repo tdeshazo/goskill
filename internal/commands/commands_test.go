@@ -7,6 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/tdeshazo/goskill/internal/agents"
+	"github.com/tdeshazo/goskill/internal/installer"
+	"github.com/tdeshazo/goskill/internal/skills"
 )
 
 func TestAddListRemoveLocalSkill(t *testing.T) {
@@ -37,6 +43,54 @@ func TestAddListRemoveLocalSkill(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "demo")); !os.IsNotExist(err) {
 		t.Fatalf("skill should be removed, err=%v", err)
+	}
+}
+
+func TestListUsesDecoratedOutput(t *testing.T) {
+	project := t.TempDir()
+	source := makeSkill(t, t.TempDir(), "demo", "Demo skill")
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: project}
+	if err := app.Run([]string{"add", source, "-y", "-a", "codex", "cursor"}); err != nil {
+		t.Fatal(err)
+	}
+
+	out.Reset()
+	if err := app.Run([]string{"list"}); err != nil {
+		t.Fatal(err)
+	}
+	rendered := out.String()
+	for _, want := range []string{
+		"◆",
+		"Installed skills",
+		"│",
+		"Project",
+		"●",
+		"demo",
+		"Demo skill",
+		"agents:",
+		"Codex, Cursor",
+		"path:",
+		shorten(filepath.Join(project, ".agents", "skills", "demo"), project),
+		"└",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("decorated list missing %q: %s", want, rendered)
+		}
+	}
+}
+
+func TestListEmptyUsesDecoratedOutput(t *testing.T) {
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: t.TempDir()}
+	if err := app.Run([]string{"list"}); err != nil {
+		t.Fatal(err)
+	}
+	rendered := out.String()
+	for _, want := range []string{"◆", "Installed skills", "│", "No skills found.", "└"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("decorated empty list missing %q: %s", want, rendered)
+		}
 	}
 }
 
@@ -98,6 +152,267 @@ func TestAddMultiSkillSourcePromptsForSelection(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "alpha")); !os.IsNotExist(err) {
 		t.Fatalf("alpha should not be installed, err=%v", err)
+	}
+}
+
+func TestSkillSelectionModelFiltersAndSelects(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "alpha", Description: "First skill"},
+		{Name: "beta", Description: "Second skill"},
+	}
+	model := newSkillSelectionModel(discovered, "source")
+	model.query = "sec"
+
+	filtered := model.filtered()
+	if len(filtered) != 1 || filtered[0] != 1 {
+		t.Fatalf("filtered = %#v", filtered)
+	}
+
+	model.toggleCurrent()
+	selected := model.selectedSkills()
+	if len(selected) != 1 || selected[0].Name != "beta" {
+		t.Fatalf("selected = %#v", selected)
+	}
+}
+
+func TestSkillSelectionModelSortsSkillsByGroupAndName(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "beta", Metadata: map[string]any{"plugin": "group"}},
+		{Name: "alpha", Metadata: map[string]any{"plugin": "group"}},
+		{Name: "gamma", Metadata: map[string]any{"plugin": "another"}},
+	}
+	model := newSkillSelectionModel(discovered, "source")
+
+	if len(model.skills) != 3 {
+		t.Fatalf("expected 3 skills, got %d", len(model.skills))
+	}
+	if model.skills[0].Name != "gamma" || model.skills[1].Name != "alpha" || model.skills[2].Name != "beta" {
+		t.Fatalf("skills not sorted by group and name: %#v", model.skills)
+	}
+}
+
+func TestSkillSelectionModelGroupsByTopLevelPluginField(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "frontend-design", Description: "Review UI", Metadata: map[string]any{"plugin": "agent-skills"}},
+		{Name: "code-review", Description: "Review code", Metadata: map[string]any{"plugin": "quality"}},
+	}
+	model := newSkillSelectionModel(discovered, "source")
+
+	view := model.renderActive()
+	if !strings.Contains(view, "Agent Skills") {
+		t.Fatalf("expected group heading for agent-skills, got: %s", view)
+	}
+	if !strings.Contains(view, "Quality") {
+		t.Fatalf("expected group heading for quality, got: %s", view)
+	}
+}
+
+func TestSkillSelectionModelGroupsByNestedRepoFolders(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "react", Description: "Frontend skill", RepoPath: "skills/frontend/react/SKILL.md"},
+		{Name: "postgres", Description: "Backend skill", RepoPath: "skills/backend/postgres/SKILL.md"},
+		{Name: "sqlite", Description: "Data skill", RepoPath: "skills/backend/data/sqlite/SKILL.md"},
+	}
+	model := newSkillSelectionModel(discovered, "source")
+
+	view := model.renderActive()
+	for _, want := range []string{"Backend", "Backend / Data", "Frontend"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("expected nested folder heading %q, got: %s", want, view)
+		}
+	}
+}
+
+func TestSkillSelectionModelFiltersByNestedFolderGroup(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "react", Description: "Frontend skill", RepoPath: "skills/frontend/react/SKILL.md"},
+		{Name: "postgres", Description: "Backend skill", RepoPath: "skills/backend/postgres/SKILL.md"},
+	}
+	model := newSkillSelectionModel(discovered, "source")
+	model.query = "frontend"
+
+	filtered := model.filtered()
+	if len(filtered) != 1 || model.skills[filtered[0]].Name != "react" {
+		t.Fatalf("filtered = %#v, skills = %#v", filtered, model.skills)
+	}
+}
+
+func TestSkillsWithRepoPathsAddsRelativeSkillMDPath(t *testing.T) {
+	base := t.TempDir()
+	skillDir := filepath.Join(base, "skills", "frontend", "react")
+	list := []skills.Skill{{Name: "react", Path: skillDir}}
+
+	got := skillsWithRepoPaths(list, base)
+	if got[0].RepoPath != "skills/frontend/react/SKILL.md" {
+		t.Fatalf("RepoPath = %q", got[0].RepoPath)
+	}
+	if list[0].RepoPath != "" {
+		t.Fatalf("skillsWithRepoPaths should not mutate input: %#v", list[0])
+	}
+}
+
+func TestSkillSelectionModelJAndKUpdateSearch(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "alpha", Description: "First skill"},
+		{Name: "beta", Description: "Second skill"},
+	}
+	model := newSkillSelectionModel(discovered, "source")
+	model.cursor = 1
+
+	updated, _ := model.Update(tea.KeyPressMsg{Text: "j", Code: 'j'})
+	model = updated.(skillSelectionModel)
+	updated, _ = model.Update(tea.KeyPressMsg{Text: "k", Code: 'k'})
+	model = updated.(skillSelectionModel)
+
+	if model.query != "jk" {
+		t.Fatalf("query = %q, want jk", model.query)
+	}
+	if model.cursor != 0 {
+		t.Fatalf("cursor = %d, want 0 after search input", model.cursor)
+	}
+}
+
+func TestSkillResolveSpinnerRendersAndClearsLine(t *testing.T) {
+	var out bytes.Buffer
+
+	renderSkillResolveSpinner(&out, "owner/repo", 0)
+	clearSkillResolveSpinner(&out)
+
+	got := out.String()
+	if !strings.Contains(got, "Loading skills from owner/repo") {
+		t.Fatalf("spinner output missing loading label: %q", got)
+	}
+	if strings.Contains(got, "\x1b[?2026") || strings.Contains(got, "\x1b[?2027") || strings.Contains(got, "\x1b[?1u") {
+		t.Fatalf("spinner output contains terminal capability query: %q", got)
+	}
+	if !strings.HasSuffix(got, "\r\x1b[2K") {
+		t.Fatalf("spinner output should clear the line, got %q", got)
+	}
+}
+
+func TestSkillSelectionModelEscCancels(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "alpha", Description: "First skill"},
+	}
+	model := newSkillSelectionModel(discovered, "source")
+
+	updated, cmd := model.Update(tea.KeyPressMsg{Text: "esc", Code: 0})
+	model = updated.(skillSelectionModel)
+
+	if !model.cancelled {
+		t.Fatal("esc should cancel the selector")
+	}
+	if cmd == nil {
+		t.Fatal("esc should quit the selector")
+	}
+}
+
+func TestSkillSelectionModelQDoesNotCancel(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "alpha", Description: "First skill"},
+	}
+	model := newSkillSelectionModel(discovered, "source")
+
+	updated, cmd := model.Update(tea.KeyPressMsg{Text: "q", Code: 'q'})
+	model = updated.(skillSelectionModel)
+
+	if model.cancelled {
+		t.Fatal("q should not cancel the selector")
+	}
+	if cmd != nil {
+		t.Fatal("q should not quit the selector")
+	}
+}
+
+func TestSkillSelectionModelShowsDescriptionOnlyForCursor(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "alpha", Description: "First skill"},
+		{Name: "beta", Description: "Second skill"},
+	}
+	model := newSkillSelectionModel(discovered, "source")
+
+	view := model.renderActive()
+	if !strings.Contains(view, "First skill") {
+		t.Fatalf("view missing active description: %s", view)
+	}
+	if strings.Contains(view, "Second skill") {
+		t.Fatalf("view includes inactive description: %s", view)
+	}
+
+	model.moveCursor(1)
+	view = model.renderActive()
+	if strings.Contains(view, "First skill") {
+		t.Fatalf("view includes inactive description after cursor move: %s", view)
+	}
+	if !strings.Contains(view, "Second skill") {
+		t.Fatalf("view missing active description after cursor move: %s", view)
+	}
+}
+
+func TestSkillSelectionModelRendersResolvedSourceLabel(t *testing.T) {
+	discovered := []skills.Skill{{Name: "alpha", Description: "First skill"}}
+	model := newSkillSelectionModel(discovered, "github.com/example/repo")
+
+	view := model.renderActive()
+	if !strings.Contains(view, "Source:") {
+		t.Fatalf("view missing source label: %s", view)
+	}
+	if !strings.Contains(view, "github.com/example/repo") {
+		t.Fatalf("view missing resolved source: %s", view)
+	}
+}
+
+func TestSkillSelectionModelWrapsSelectedSummary(t *testing.T) {
+	discovered := []skills.Skill{
+		{Name: "alpha-extra-long-skill-name", Description: "First skill"},
+		{Name: "beta-extra-long-skill-name", Description: "Second skill"},
+		{Name: "gamma-extra-long-skill-name", Description: "Third skill"},
+	}
+	model := newSkillSelectionModel(discovered, "source")
+	model.width = 32
+	model.selected = map[int]bool{0: true, 1: true, 2: true}
+
+	lines := model.renderSelectedSummaryLines()
+	if len(lines) < 2 {
+		t.Fatalf("expected wrapped summary, got %#v", lines)
+	}
+	joined := strings.Join(lines, "\n")
+	for _, skill := range discovered {
+		if !strings.Contains(joined, skill.Name) {
+			t.Fatalf("summary missing %q: %s", skill.Name, joined)
+		}
+	}
+}
+
+func TestSkillSelectionModelRenderSubmittedSummary(t *testing.T) {
+	cwd := t.TempDir()
+	discovered := []skills.Skill{
+		{Name: "alpha", Description: "First skill", Path: filepath.Join(cwd, "source", "alpha")},
+	}
+	model := newSkillSelectionModel(discovered, "source", selectorInstallContext{
+		targets: []agents.Type{agents.Codex, agents.Cursor},
+		global:  false,
+		cwd:     cwd,
+		mode:    installer.Copy,
+	})
+	model.selected = map[int]bool{0: true}
+
+	view := model.renderSubmitted()
+	for _, want := range []string{
+		"Installation Summary",
+		"Ready to install 1 skill.",
+		"scope:",
+		"project",
+		"mode:",
+		"copy",
+		"Codex:",
+		"Cursor:",
+		filepath.Join(cwd, ".agents", "skills", "alpha"),
+		filepath.Join(cwd, "source", "alpha"),
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("submitted summary missing %q: %s", want, view)
+		}
 	}
 }
 

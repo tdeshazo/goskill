@@ -67,7 +67,7 @@ func (a App) Run(args []string) error {
 	case "--help", "-h", "help":
 		a.help()
 	case "--version", "-v":
-		fmt.Fprintln(a.Stdout, a.Version)
+		fmt.Fprint(a.Stdout, renderVersionOutput(a.Version))
 	case "add", "a":
 		src, opts, err := parseAdd(rest)
 		if err != nil {
@@ -128,7 +128,7 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 		if err != nil {
 			return err
 		}
-		resolved, cleanup, err := a.resolveSkills(parsed, opts)
+		resolved, cleanup, err := a.resolveSkillsForAdd(parsed, opts)
 		if cleanup != nil {
 			defer cleanup()
 		}
@@ -136,12 +136,10 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 			return err
 		}
 		if opts.List {
-			for _, skill := range resolved.skills {
-				fmt.Fprintf(a.Stdout, "%s\t%s\n", skill.Name, skill.Description)
-			}
+			fmt.Fprint(a.Stdout, renderSkillDiscoveryList(resolved.skills, "Discovered skills"))
 			continue
 		}
-		selected, err := a.selectSkills(resolved.skills, opts)
+		selected, err := a.selectSkills(resolved.skills, resolved.sourceID, opts, targets, mode)
 		if err != nil {
 			return err
 		}
@@ -179,12 +177,12 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 		}
 	}
 	if len(installed) > 0 {
-		fmt.Fprintf(a.Stdout, "Installed %d skill(s): %s\n", len(installed), strings.Join(installed, ", "))
+		fmt.Fprint(a.Stdout, renderSuccess("Installed skills", fmt.Sprintf("%d skill%s installed", len(installed), skillPlural(len(installed))), selectorSummaryStyle.Render(strings.Join(installed, ", "))))
 	}
 	return nil
 }
 
-func (a App) selectSkills(discovered []skills.Skill, opts AddOptions) ([]skills.Skill, error) {
+func (a App) selectSkills(discovered []skills.Skill, source string, opts AddOptions, targets []agents.Type, mode installer.Mode) ([]skills.Skill, error) {
 	if len(discovered) == 0 {
 		return nil, fmt.Errorf("no skills found")
 	}
@@ -201,16 +199,17 @@ func (a App) selectSkills(discovered []skills.Skill, opts AddOptions) ([]skills.
 	if a.Stdin == nil {
 		return nil, fmt.Errorf("multiple skills found; specify one or more with --skill")
 	}
-
-	fmt.Fprintln(a.Stdout, "Multiple skills found:")
-	for i, skill := range discovered {
-		fmt.Fprintf(a.Stdout, "  %d. %s", i+1, skill.Name)
-		if skill.Description != "" {
-			fmt.Fprintf(a.Stdout, " - %s", skill.Description)
+	if a.canUseInteractiveSelector() {
+		selected, err := a.selectSkillsInteractive(discovered, source, opts, targets, mode)
+		if err == nil {
+			return selected, nil
 		}
-		fmt.Fprintln(a.Stdout)
+		if !errors.Is(err, errInteractiveUnavailable) {
+			return nil, err
+		}
 	}
-	fmt.Fprint(a.Stdout, "Select skills to install (numbers, names, comma-separated, or '*' for all): ")
+
+	fmt.Fprint(a.Stdout, renderSkillSelectionPrompt(discovered))
 
 	scanner := bufio.NewScanner(a.Stdin)
 	if !scanner.Scan() {
@@ -330,17 +329,7 @@ func (a App) List(args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
 	}
-	if len(list) == 0 {
-		fmt.Fprintln(a.Stdout, "No skills found.")
-		return nil
-	}
-	for _, item := range list {
-		var names []string
-		for _, agent := range item.Agents {
-			names = append(names, agents.Display(agent))
-		}
-		fmt.Fprintf(a.Stdout, "%s %s\n  Agents: %s\n", item.Name, shorten(item.CanonicalPath, a.Cwd), strings.Join(names, ", "))
-	}
+	fmt.Fprint(a.Stdout, renderSkillList(list, a.Cwd))
 	return nil
 }
 
@@ -362,7 +351,7 @@ func (a App) Remove(skillNames []string, opts RemoveOptions) error {
 		}
 	}
 	if len(skillNames) == 0 {
-		fmt.Fprintln(a.Stdout, "No skills found to remove.")
+		fmt.Fprint(a.Stdout, renderInfo("Remove skills", selectorHintStyle.Render("No skills found to remove.")))
 		return nil
 	}
 	for _, name := range skillNames {
@@ -375,8 +364,14 @@ func (a App) Remove(skillNames []string, opts RemoveOptions) error {
 			_ = lockfile.RemoveLocal(a.Cwd, name)
 		}
 	}
-	fmt.Fprintf(a.Stdout, "Successfully removed %d skill(s)\n", len(skillNames))
+	fmt.Fprint(a.Stdout, renderSuccess("Removed skills", fmt.Sprintf("%d skill%s removed", len(skillNames), skillPlural(len(skillNames)))))
 	return nil
+}
+
+type foundSkill struct {
+	Name     string `json:"name"`
+	Source   string `json:"source"`
+	Installs int    `json:"installs"`
 }
 
 func (a App) Find(args []string) error {
@@ -387,19 +382,12 @@ func (a App) Find(args []string) error {
 	apiBase := envDefault("SKILLS_API_URL", "https://skills.sh")
 	u := apiBase + "/api/search?q=" + url.QueryEscape(query) + "&limit=10"
 	var payload struct {
-		Skills []struct {
-			ID       string `json:"id"`
-			Name     string `json:"name"`
-			Source   string `json:"source"`
-			Installs int    `json:"installs"`
-		} `json:"skills"`
+		Skills []foundSkill `json:"skills"`
 	}
 	if err := fetchJSON(u, &payload); err != nil {
 		return err
 	}
-	for _, skill := range payload.Skills {
-		fmt.Fprintf(a.Stdout, "%s\t%s\t%d installs\n", skill.Name, skill.Source, skill.Installs)
-	}
+	fmt.Fprint(a.Stdout, renderFindResults(query, payload.Skills))
 	return nil
 }
 
@@ -444,21 +432,18 @@ func (a App) Validate(args []string) error {
 		}
 	}
 	var issueCount int
+	var results []validationResult
 	for _, path := range files {
 		issues := issuesByPath[path]
-		if len(issues) == 0 {
-			fmt.Fprintf(a.Stdout, "%s: OK\n", shorten(path, a.Cwd))
-			continue
-		}
-		for _, issue := range issues {
+		results = append(results, validationResult{Path: path, Issues: issues})
+		for range issues {
 			issueCount++
-			fmt.Fprintf(a.Stdout, "%s: %s\n", shorten(path, a.Cwd), issue.Message)
 		}
 	}
+	fmt.Fprint(a.Stdout, renderValidationResults(results, len(files), issueCount, a.Cwd))
 	if issueCount > 0 {
 		return fmt.Errorf("validation failed: %d issue(s)", issueCount)
 	}
-	fmt.Fprintf(a.Stdout, "Validated %d skill(s): OK\n", len(files))
 	return nil
 }
 
@@ -546,7 +531,7 @@ func (a App) Init(args []string) error {
 	}
 	path := filepath.Join(dir, "SKILL.md")
 	if _, err := os.Stat(path); err == nil {
-		fmt.Fprintf(a.Stdout, "Skill already exists at %s\n", display)
+		fmt.Fprint(a.Stdout, renderWarning("Init skill", fmt.Sprintf("Skill already exists at %s", selectorPathStyle.Render(display))))
 		return nil
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -556,14 +541,14 @@ func (a App) Init(args []string) error {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.Stdout, "Created %s\n", display)
+	fmt.Fprint(a.Stdout, renderSuccess("Created skill", selectorPathStyle.Render(display)))
 	return nil
 }
 
 func (a App) InstallFromLock(args []string) error {
 	lock := lockfile.ReadLocal(a.Cwd)
 	if len(lock.Skills) == 0 {
-		fmt.Fprintln(a.Stdout, "No project skills found in skills-lock.json")
+		fmt.Fprint(a.Stdout, renderInfo("Install skills", selectorHintStyle.Render("No project skills found in skills-lock.json")))
 		return nil
 	}
 	for skillName, entry := range lock.Skills {
@@ -597,7 +582,7 @@ func (a App) Sync(args []string) error {
 	}
 	discovered := discoverNodeModuleSkills(a.Cwd)
 	if len(discovered) == 0 {
-		fmt.Fprintln(a.Stdout, "No SKILL.md files found in node_modules.")
+		fmt.Fprint(a.Stdout, renderInfo("Sync skills", selectorHintStyle.Render("No SKILL.md files found in node_modules.")))
 		return nil
 	}
 	local := lockfile.ReadLocal(a.Cwd)
@@ -622,7 +607,7 @@ func (a App) Sync(args []string) error {
 		hash, _ := skills.FolderHash(skill.Path)
 		_ = lockfile.AddLocal(a.Cwd, skill.Name, lockfile.LocalEntry{Source: skill.PackageName, SourceType: "node_modules", ComputedHash: hash})
 	}
-	fmt.Fprintf(a.Stdout, "Synced %d skill(s)\n", len(toInstall))
+	fmt.Fprint(a.Stdout, renderSuccess("Synced skills", fmt.Sprintf("%d skill%s synced", len(toInstall), skillPlural(len(toInstall)))))
 	return nil
 }
 
@@ -646,7 +631,7 @@ func (a App) Check(args []string, doUpdate bool) error {
 			latest := github.SkillFolderHash(tree, entry.SkillPath)
 			if latest != "" && latest != entry.SkillFolderHash {
 				updates++
-				fmt.Fprintf(a.Stdout, "Update available: %s\n", name)
+				fmt.Fprint(a.Stdout, renderWarning("Update available", fmt.Sprintf("Update available: %s", name)))
 				if doUpdate {
 					sourceArg := entry.Source
 					if entry.Ref != "" {
@@ -684,9 +669,9 @@ func (a App) Check(args []string, doUpdate bool) error {
 		}
 	}
 	if !doUpdate {
-		fmt.Fprintf(a.Stdout, "Checked %d skill(s), %d update(s) available\n", checked, updates)
+		fmt.Fprint(a.Stdout, renderInfo("Checked skills", fmt.Sprintf("%d skill%s checked", checked, skillPlural(checked)), fmt.Sprintf("%d update%s available", updates, skillPlural(updates))))
 	} else {
-		fmt.Fprintf(a.Stdout, "Updated %d skill(s)\n", success)
+		fmt.Fprint(a.Stdout, renderSuccess("Updated skills", fmt.Sprintf("%d skill%s updated", success, skillPlural(success))))
 	}
 	return nil
 }
@@ -727,6 +712,7 @@ func (a App) resolveSkills(parsed source.Parsed, opts AddOptions) (resolvedSkill
 	switch parsed.Type {
 	case source.Local:
 		list, err := skills.Discover(parsed.LocalPath, parsed.Subpath, len(opts.Skill) > 0, opts.FullDepth)
+		list = skillsWithRepoPaths(list, parsed.LocalPath)
 		return resolvedSkills{skills: list, sourceID: parsed.LocalPath, basePath: parsed.LocalPath}, nil, err
 	case source.WellKnown:
 		wk, err := wellknown.FetchAll(parsed.URL)
@@ -756,6 +742,7 @@ func (a App) resolveSkills(parsed source.Parsed, opts AddOptions) (resolvedSkill
 		if parsed.SkillFilter != "" {
 			list = skills.Filter(list, []string{parsed.SkillFilter})
 		}
+		list = skillsWithRepoPaths(list, tmp)
 		sourceID := source.OwnerRepo(parsed)
 		if sourceID == "" {
 			sourceID = parsed.URL
@@ -764,6 +751,24 @@ func (a App) resolveSkills(parsed source.Parsed, opts AddOptions) (resolvedSkill
 	default:
 		return resolvedSkills{}, nil, errors.New("unsupported source")
 	}
+}
+
+func skillsWithRepoPaths(list []skills.Skill, basePath string) []skills.Skill {
+	if basePath == "" {
+		return list
+	}
+	out := append([]skills.Skill(nil), list...)
+	for i := range out {
+		if out[i].RepoPath != "" || out[i].Path == "" {
+			continue
+		}
+		rel, err := filepath.Rel(basePath, filepath.Join(out[i].Path, "SKILL.md"))
+		if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+			continue
+		}
+		out[i].RepoPath = filepath.ToSlash(rel)
+	}
+	return out
 }
 
 func (a App) resolveAgents(names []string) ([]agents.Type, error) {
@@ -937,23 +942,13 @@ func discoverNodeModuleSkills(cwd string) []nodeSkill {
 }
 
 func (a App) banner() {
-	fmt.Fprintln(a.Stdout, "skills")
-	fmt.Fprintln(a.Stdout, "The open agent skills ecosystem")
-	fmt.Fprintln(a.Stdout, "  skills add <package>")
-	fmt.Fprintln(a.Stdout, "  skills list")
-	fmt.Fprintln(a.Stdout, "  skills remove [skills]")
-	fmt.Fprintln(a.Stdout, "  skills find [query]")
-	fmt.Fprintln(a.Stdout, "  skills validate <skills>")
-	fmt.Fprintln(a.Stdout, "  skills update")
-	fmt.Fprintln(a.Stdout, "  skills init [name]")
+	fmt.Fprint(a.Stdout, renderBanner())
 }
 
 func (a App) help() {
 	fs := flag.NewFlagSet("skills", flag.ContinueOnError)
 	_ = fs
-	fmt.Fprintln(a.Stdout, "Usage: skills <command> [options]")
-	fmt.Fprintln(a.Stdout, "Commands: add, list, remove, find, validate, check, update, init, install, experimental_sync")
-	fmt.Fprintln(a.Stdout, "Agents: claude-code, codex, cursor")
+	fmt.Fprint(a.Stdout, renderHelp())
 }
 
 func shorten(path, cwd string) string {

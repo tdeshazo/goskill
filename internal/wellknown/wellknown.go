@@ -109,10 +109,10 @@ func fetchV1(indexURL string, body []byte, wellKnownPath string) ([]Skill, error
 	base := strings.TrimSuffix(indexURL, "/"+wellKnownPath+"/index.json")
 	var out []Skill
 	for _, entry := range idx.Skills {
-		if entry.Name == "" || entry.Description == "" || len(entry.Files) == 0 {
+		if entry.Name == "" || len(entry.Files) == 0 {
 			continue
 		}
-		s := Skill{Skill: skills.Skill{Name: entry.Name, Description: entry.Description}}
+		s := Skill{Skill: skills.Skill{Name: entry.Name}}
 		for _, file := range entry.Files {
 			if !safeFile(file) {
 				continue
@@ -124,7 +124,8 @@ func fetchV1(indexURL string, body []byte, wellKnownPath string) ([]Skill, error
 			}
 			s.Files = append(s.Files, skills.SnapshotFile{Path: file, Contents: string(content)})
 		}
-		if len(s.Files) > 0 {
+		if desc, ok := yamlDescription(s.Files); ok {
+			s.Description = desc
 			s.SourceURL = base
 			out = append(out, s)
 		}
@@ -149,7 +150,7 @@ func fetchV2(indexURL string, body []byte) ([]Skill, error) {
 		if !ok || !digestOK(data, entry.Digest) {
 			continue
 		}
-		s := Skill{Skill: skills.Skill{Name: entry.Name, Description: entry.Description}, SourceURL: resolved}
+		s := Skill{Skill: skills.Skill{Name: entry.Name}, SourceURL: resolved}
 		switch entry.Type {
 		case "skill-md":
 			s.Files = []skills.SnapshotFile{{Path: "SKILL.md", Contents: string(data)}}
@@ -160,11 +161,28 @@ func fetchV2(indexURL string, body []byte) ([]Skill, error) {
 			}
 			s.Files = files
 		}
-		if len(s.Files) > 0 {
+		if desc, ok := yamlDescription(s.Files); ok {
+			s.Description = desc
 			out = append(out, s)
 		}
 	}
 	return out, nil
+}
+
+func yamlDescription(files []skills.SnapshotFile) (string, bool) {
+	for _, file := range files {
+		name := path.Base(strings.ReplaceAll(file.Path, "\\", "/"))
+		if !strings.EqualFold(name, "SKILL.md") {
+			continue
+		}
+		data := skills.ParseFrontmatter(file.Contents)
+		desc, _ := data["description"].(string)
+		desc = strings.TrimSpace(desc)
+		if desc != "" {
+			return desc, true
+		}
+	}
+	return "", false
 }
 
 func fetchBytes(u string) ([]byte, bool) {

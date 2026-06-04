@@ -42,7 +42,19 @@ func (a App) warnIfNewerRelease(cmd string) {
 	if releaseURL == "" {
 		releaseURL = "https://github.com/" + updateRepo() + "/releases/latest"
 	}
-	fmt.Fprintf(a.Stderr, "A newer goskill release is available: %s (current: %s)\n%s\n", normalizeVersion(latest), normalizeVersion(a.Version), releaseURL)
+	fmt.Fprint(a.Stderr, renderVersionWarning(normalizeVersion(latest), normalizeVersion(a.Version), releaseURL))
+}
+
+func renderVersionWarning(latest, current, releaseURL string) string {
+	latestVersion := selectorSuccessStyle.Bold(true).Render(latest)
+	currentVersion := selectorWarningStyle.Bold(true).Render(current)
+	lines := []string{
+		selectorWarningStyle.Render("◆") + "  " + selectorTitleStyle.Render("Update available"),
+		fmt.Sprintf("%s  A newer goskill release is available: %s (current: %s)", selectorBar(), latestVersion, currentVersion),
+		fmt.Sprintf("%s  %s", selectorBar(), selectorPathStyle.Render(releaseURL)),
+		selectorBarStyle.Render("└"),
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func updateCheckDisabled() bool {

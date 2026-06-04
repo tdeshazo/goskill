@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tdeshazo/goskill/internal/terminal"
 )
 
 func TestWarnIfNewerRelease(t *testing.T) {
@@ -25,11 +27,25 @@ func TestWarnIfNewerRelease(t *testing.T) {
 	app.warnIfNewerRelease("list")
 
 	output := stderr.String()
-	if !strings.Contains(output, "A newer goskill release is available: 0.2.0 (current: 0.1.0)") {
+	plain := terminal.StripEscapes(output)
+	if !strings.Contains(plain, "A newer goskill release is available: 0.2.0 (current: 0.1.0)") {
 		t.Fatalf("missing update warning:\n%s", output)
 	}
-	if !strings.Contains(output, "https://example.test/releases/v0.2.0") {
+	if !strings.Contains(plain, "https://example.test/releases/v0.2.0") {
 		t.Fatalf("missing release URL:\n%s", output)
+	}
+	for _, want := range []string{"◆", "Update available", "│", "└"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("missing decorated warning element %q:\n%s", want, output)
+		}
+	}
+	for _, want := range []string{
+		selectorSuccessStyle.Bold(true).Render("0.2.0"),
+		selectorWarningStyle.Bold(true).Render("0.1.0"),
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("missing styled version %q:\n%s", want, output)
+		}
 	}
 }
 
@@ -82,7 +98,7 @@ func TestWarnIfNewerReleaseUsesCache(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("calls = %d, want cached single call", calls)
 	}
-	if got := strings.Count(stderr.String(), "A newer goskill release is available"); got != 2 {
+	if got := strings.Count(terminal.StripEscapes(stderr.String()), "A newer goskill release is available"); got != 2 {
 		t.Fatalf("warning count = %d, output:\n%s", got, stderr.String())
 	}
 }
