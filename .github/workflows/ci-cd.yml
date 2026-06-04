@@ -58,14 +58,34 @@ jobs:
             -o goskill \
             ./cmd/goskill
 
-  wheel:
-    name: Wheel (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    needs: go
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+  python:
+    name: Python checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Ruff
+        run: python -m pip install --upgrade pip ruff
+
+      - name: Ruff check
+        run: python -m ruff check setup.py src
+
+      - name: Ruff format check
+        run: python -m ruff format --check setup.py src
+
+  release-linux:
+    name: Release artifacts (Linux)
+    runs-on: ubuntu-latest
+    needs: [go, python]
+    if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout
@@ -84,64 +104,47 @@ jobs:
           cache: pip
 
       - name: Install build tools
-        run: python -m pip install --upgrade pip build ruff twine
+        run: python -m pip install --upgrade pip build twine
 
-      - name: Ruff check
-        run: python -m ruff check setup.py src
+      - name: Build Linux binaries
+        shell: bash
+        run: |
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME#v}"
+          MODULE="$(go list -m)"
+          for GOARCH in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="${GOARCH}" \
+              go build -trimpath \
+                -ldflags "-s -w -X main.version=${VERSION} -X ${MODULE}/internal/commands.defaultUpdateRepo=${GITHUB_REPOSITORY}" \
+                -o "dist/goskill-linux-${GOARCH}" \
+                ./cmd/goskill
+          done
 
-      - name: Ruff format check
-        run: python -m ruff format --check setup.py src
-
-      - name: Build wheel
+      - name: Build Linux wheel
         run: python -m build --wheel
 
       - name: Check wheel metadata
-        run: python -m twine check dist/*
+        run: python -m twine check dist/*.whl
 
       - name: Smoke test wheel
         shell: bash
         run: |
           python -m venv .venv-smoke
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            .venv-smoke/Scripts/python -m pip install dist/*.whl
-            .venv-smoke/Scripts/goskill --version
-          else
-            .venv-smoke/bin/python -m pip install dist/*.whl
-            .venv-smoke/bin/goskill --version
-          fi
+          .venv-smoke/bin/python -m pip install dist/*.whl
+          .venv-smoke/bin/goskill --version
 
-      - name: Upload wheel
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ runner.os }}-${{ runner.arch }}
-          path: dist/*.whl
+          name: release-artifacts-linux
+          path: dist/*
           if-no-files-found: error
 
-  binary:
-    name: Binary (${{ matrix.goos }}/${{ matrix.goarch }})
-    runs-on: ubuntu-latest
-    needs: go
+  release-macos:
+    name: Release artifacts (macOS)
+    runs-on: macos-latest
+    needs: [go, python]
     if: startsWith(github.ref, 'refs/tags/v')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-            ext: ""
-          - goos: linux
-            goarch: arm64
-            ext: ""
-          - goos: darwin
-            goarch: amd64
-            ext: ""
-          - goos: darwin
-            goarch: arm64
-            ext: ""
-          - goos: windows
-            goarch: amd64
-            ext: ".exe"
 
     steps:
       - name: Checkout
@@ -153,33 +156,114 @@ jobs:
           go-version: "1.25.x"
           cache: true
 
-      - name: Build binary
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build macOS binaries
         shell: bash
         run: |
           mkdir -p dist
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            VERSION="$(awk -F '"' '/^version = / { print $2; exit }' pyproject.toml)"
-          fi
+          VERSION="${GITHUB_REF_NAME#v}"
           MODULE="$(go list -m)"
-          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-            go build -trimpath \
-              -ldflags "-s -w -X main.version=${VERSION} -X ${MODULE}/internal/commands.defaultUpdateRepo=${GITHUB_REPOSITORY}" \
-              -o "dist/goskill-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" \
-              ./cmd/goskill
+          for GOARCH in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=darwin GOARCH="${GOARCH}" \
+              go build -trimpath \
+                -ldflags "-s -w -X main.version=${VERSION} -X ${MODULE}/internal/commands.defaultUpdateRepo=${GITHUB_REPOSITORY}" \
+                -o "dist/goskill-darwin-${GOARCH}" \
+                ./cmd/goskill
+          done
 
-      - name: Upload binary
+      - name: Build macOS wheel
+        run: python -m build --wheel
+
+      - name: Check wheel metadata
+        run: python -m twine check dist/*.whl
+
+      - name: Smoke test wheel
+        shell: bash
+        run: |
+          python -m venv .venv-smoke
+          .venv-smoke/bin/python -m pip install dist/*.whl
+          .venv-smoke/bin/goskill --version
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/goskill-*
+          name: release-artifacts-macos
+          path: dist/*
+          if-no-files-found: error
+
+  release-windows:
+    name: Release artifacts (Windows)
+    runs-on: windows-latest
+    needs: [go, python]
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Build Windows binary
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $module = go list -m
+          $ldflags = "-s -w -X main.version=$version -X $module/internal/commands.defaultUpdateRepo=$env:GITHUB_REPOSITORY"
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -trimpath -ldflags "$ldflags" -o "dist/goskill-windows-amd64.exe" ./cmd/goskill
+
+      - name: Build Windows wheel
+        run: python -m build --wheel
+
+      - name: Check wheel metadata
+        shell: pwsh
+        run: |
+          $wheels = Get-ChildItem dist/*.whl
+          python -m twine check @($wheels.FullName)
+
+      - name: Smoke test wheel
+        shell: pwsh
+        run: |
+          python -m venv .venv-smoke
+          $wheel = (Get-ChildItem dist/*.whl | Select-Object -First 1).FullName
+          .venv-smoke/Scripts/python -m pip install $wheel
+          .venv-smoke/Scripts/goskill --version
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts-windows
+          path: dist/*
           if-no-files-found: error
 
   release:
     name: GitHub Release
     runs-on: ubuntu-latest
-    needs: [wheel, binary]
+    needs: [release-linux, release-macos, release-windows]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
@@ -190,17 +274,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download wheels
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: wheel-*
-          path: dist
-          merge-multiple: true
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
-        with:
-          pattern: binary-*
+          pattern: release-artifacts-*
           path: dist
           merge-multiple: true
 
@@ -226,10 +303,10 @@ jobs:
   #     id-token: write
 
     # steps:
-    #   - name: Download wheels
+    #   - name: Download release artifacts
     #     uses: actions/download-artifact@v4
     #     with:
-    #       pattern: wheel-*
+    #       pattern: release-artifacts-*
     #       path: dist
     #       merge-multiple: true
 
