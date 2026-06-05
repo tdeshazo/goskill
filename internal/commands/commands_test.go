@@ -246,75 +246,29 @@ func TestSkillSelectionModelFiltersAndSelects(t *testing.T) {
 	}
 }
 
-func TestFindSelectionModelFiltersAndRendersInstallCommand(t *testing.T) {
-	model := newFindSelectionModel("react", []foundSkill{
+func TestRenderFindResultsGroupsBySourceAndIncludesInstallCommands(t *testing.T) {
+	view := renderFindResults("react", []foundSkill{
 		{Name: "postgres", Source: "db/skills", Installs: 12},
 		{Name: "react best practices", Source: "vercel-labs/agent-skills", Installs: 120},
+		{Name: "react", Source: "vercel-labs/agent-skills", Installs: 140},
 	})
-	model.filter = "vercel"
-
-	filtered := model.filtered()
-	if len(filtered) != 1 {
-		t.Fatalf("filtered = %#v, want one result", filtered)
-	}
-	selected := model.selectedResult()
-	if selected == nil || selected.Name != "react best practices" {
-		t.Fatalf("selected = %#v", selected)
-	}
-	model.toggleCurrent()
-	selectedResults := model.selectedResults()
-	if len(selectedResults) != 1 || selectedResults[0].Name != "react best practices" {
-		t.Fatalf("selected results = %#v", selectedResults)
-	}
-
-	view := model.renderActive()
 	for _, want := range []string{
 		"Find skills",
-		"Filter:",
+		"3 results for react",
 		"vercel-labs/agent-skills",
+		"db/skills",
+		"react",
 		"react best practices",
+		"goskill add vercel-labs/agent-skills --skill react",
 		"goskill add vercel-labs/agent-skills --skill 'react best practices'",
-		"Selected:",
+		"goskill add db/skills --skill postgres",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}
 	}
-}
-
-func TestFindSelectionModelSubmittedSummary(t *testing.T) {
-	model := newFindSelectionModel("react", []foundSkill{
-		{Name: "react", Source: "vercel-labs/agent-skills", Installs: 120},
-	})
-	model.toggleCurrent()
-	model.done = true
-
-	view := model.renderSubmitted()
-	for _, want := range []string{"Installation Summary", "source:", "Ready to install 1 skill.", "goskill add vercel-labs/agent-skills --skill react"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("submitted view missing %q:\n%s", want, view)
-		}
-	}
-}
-
-func TestInstallFoundSkillsUsesAddFlow(t *testing.T) {
-	project := t.TempDir()
-	source := makeMultiSkillSource(t, "alpha", "beta")
-	var out bytes.Buffer
-	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: project}
-
-	if err := app.installFoundSkills([]foundSkill{{Name: "beta", Source: source, Installs: 10}}); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "beta", "SKILL.md")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "alpha")); !os.IsNotExist(err) {
-		t.Fatalf("alpha should not be installed, err=%v", err)
-	}
-	if !strings.Contains(out.String(), "Installed skills") {
-		t.Fatalf("missing install output:\n%s", out.String())
+	if strings.Index(view, "vercel-labs/agent-skills") > strings.Index(view, "goskill add vercel-labs/agent-skills --skill react") {
+		t.Fatalf("source group should render before its skills:\n%s", view)
 	}
 }
 

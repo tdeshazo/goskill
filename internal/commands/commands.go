@@ -444,51 +444,8 @@ func (a App) Find(args []string) error {
 	if err := fetchJSON(u, &payload); err != nil {
 		return err
 	}
-	if a.canUseInteractiveSelector() && len(payload.Skills) > 0 {
-		selected, err := a.selectFindResultsInteractive(query, payload.Skills)
-		if err != nil {
-			return err
-		}
-		if len(selected) == 0 {
-			return nil
-		}
-		return a.installFoundSkills(selected)
-	}
 	a.writeOut(renderFindResults(query, payload.Skills))
 	return nil
-}
-
-func (a App) installFoundSkills(selected []foundSkill) error {
-	for _, group := range foundSkillInstallGroups(selected) {
-		if strings.TrimSpace(group.source) == "" {
-			return fmt.Errorf("cannot install %s: missing source", strings.Join(group.skills, ", "))
-		}
-		if err := a.Add([]string{group.source}, AddOptions{Skill: group.skills, Yes: true}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type foundSkillInstallGroup struct {
-	source string
-	skills []string
-}
-
-func foundSkillInstallGroups(selected []foundSkill) []foundSkillInstallGroup {
-	indexBySource := map[string]int{}
-	groups := make([]foundSkillInstallGroup, 0, len(selected))
-	for _, skill := range selected {
-		source := strings.TrimSpace(skill.Source)
-		idx, ok := indexBySource[source]
-		if !ok {
-			indexBySource[source] = len(groups)
-			groups = append(groups, foundSkillInstallGroup{source: source})
-			idx = len(groups) - 1
-		}
-		groups[idx].skills = append(groups[idx].skills, skill.Name)
-	}
-	return groups
 }
 
 func (a App) Validate(args []string) error {

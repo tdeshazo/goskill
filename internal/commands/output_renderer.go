@@ -143,11 +143,20 @@ func renderFindResults(query string, results []foundSkill) string {
 		selectorHintStyle.Render(fmt.Sprintf("%d result%s for %s", len(results), skillPlural(len(results)), query)),
 		selectorBar(),
 	}
-	for _, skill := range results {
+	lastSource := ""
+	for _, skill := range sortedFoundSkillsBySource(results) {
+		source := findSourceGroup(skill.Source)
+		if source != lastSource {
+			if lastSource != "" {
+				lines = append(lines, selectorBar())
+			}
+			lines = append(lines, selectorGroupLine(source, 88))
+			lastSource = source
+		}
 		lines = append(lines,
 			fmt.Sprintf("%s %s", selectorSelected.Render("●"), selectorTitleStyle.Render(skill.Name)),
-			fmt.Sprintf("  %s %s", selectorPathStyle.Render("source:"), skill.Source),
 			fmt.Sprintf("  %s %d", selectorSuccessStyle.Render("installs:"), skill.Installs),
+			fmt.Sprintf("  %s %s", selectorSummaryStyle.Render("install:"), findInstallCommand(skill)),
 		)
 	}
 	return renderInfo("Find skills", lines...)
