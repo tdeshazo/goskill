@@ -48,6 +48,19 @@ If your Go build cache is not writable in a sandboxed environment:
 GOCACHE=/tmp/go-cache go test ./...
 ```
 
+## Release
+
+Use the Makefile to keep Go, Python, and tag versions synchronized:
+
+```bash
+make check-version
+make set-version VERSION=0.2.1
+make release VERSION=0.2.1
+```
+
+`make release` commits the version update, creates an annotated `v0.2.1` tag,
+and pushes the current branch plus tag to `origin`.
+
 ## Commands
 
 ```bash

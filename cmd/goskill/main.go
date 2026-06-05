@@ -6,7 +6,7 @@ import (
 	"github.com/tdeshazo/goskill/internal/commands"
 )
 
-var version = "0.2.0"
+var version = "0.2.3"
 
 func main() {
 	app := commands.New(version)
