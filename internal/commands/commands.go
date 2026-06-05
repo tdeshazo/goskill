@@ -142,9 +142,6 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 		if err != nil {
 			return err
 		}
-		if report := securityReportForSkills(selected); len(report.Findings) > 0 {
-			a.writeOut(renderSecurityWarnings(report, a.Cwd))
-		}
 		sourceInstalled, err := a.installSelectedSkills(selected, addInstallContext{
 			rawSource: rawSource,
 			parsed:    parsed,
@@ -518,11 +515,9 @@ func (a App) Validate(args []string) error {
 	sort.Strings(files)
 	files = uniqueStrings(files)
 	issuesByPath := map[string][]skills.ValidationIssue{}
-	securityByPath := map[string]skills.SecurityReport{}
 	pathsByName := map[string][]string{}
 	for _, path := range files {
 		issuesByPath[path] = append(issuesByPath[path], skills.ValidateSkillMD(path)...)
-		securityByPath[path] = securityReportForSkillFile(path)
 		if name, ok := skills.SkillMDName(path); ok {
 			pathsByName[strings.ToLower(name)] = append(pathsByName[strings.ToLower(name)], path)
 		}
@@ -540,7 +535,7 @@ func (a App) Validate(args []string) error {
 	var results []validationResult
 	for _, path := range files {
 		issues := issuesByPath[path]
-		results = append(results, validationResult{Path: path, Issues: issues, Security: securityByPath[path]})
+		results = append(results, validationResult{Path: path, Issues: issues})
 		for range issues {
 			issueCount++
 		}
@@ -550,30 +545,6 @@ func (a App) Validate(args []string) error {
 		return fmt.Errorf("validation failed: %d issue(s)", issueCount)
 	}
 	return nil
-}
-
-func securityReportForSkills(list []skills.Skill) skills.SecurityReport {
-	reports := make([]skills.SecurityReport, 0, len(list))
-	for _, skill := range list {
-		reports = append(reports, skills.AnalyzeSkillSecurity(skill))
-	}
-	return skills.MergeSecurityReports(reports...)
-}
-
-func securityReportForSkillFile(path string) skills.SecurityReport {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return skills.SecurityReport{RiskLevel: skills.RiskNone}
-	}
-	name, ok := skills.SkillMDName(path)
-	if !ok {
-		name = filepath.Base(filepath.Dir(path))
-	}
-	return skills.AnalyzeSkillSecurity(skills.Skill{
-		Name:       name,
-		Path:       filepath.Dir(path),
-		RawContent: string(raw),
-	})
 }
 
 func (a App) validationSkillFiles(rawSource string) ([]string, func(), error) {
