@@ -258,7 +258,9 @@ func TestRenderFindResultsGroupsBySourceAndIncludesInstallCommands(t *testing.T)
 		"vercel-labs/agent-skills",
 		"db/skills",
 		"react",
+		"(140 installs)",
 		"react best practices",
+		"(120 installs)",
 		"goskill add vercel-labs/agent-skills --skill react",
 		"goskill add vercel-labs/agent-skills --skill 'react best practices'",
 		"goskill add db/skills --skill postgres",
@@ -269,6 +271,11 @@ func TestRenderFindResultsGroupsBySourceAndIncludesInstallCommands(t *testing.T)
 	}
 	if strings.Index(view, "vercel-labs/agent-skills") > strings.Index(view, "goskill add vercel-labs/agent-skills --skill react") {
 		t.Fatalf("source group should render before its skills:\n%s", view)
+	}
+	for _, unwanted := range []string{"install:", "installs:"} {
+		if strings.Contains(view, unwanted) {
+			t.Fatalf("view should not contain %q:\n%s", unwanted, view)
+		}
 	}
 }
 
