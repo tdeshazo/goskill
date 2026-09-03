@@ -52,11 +52,11 @@ rejected.
 **Outcome:** an author or CI user can identify what each emitted code means,
 which profile enables it, and the evidence behind it.
 
-- [ ] Add `goskill rules` for stable catalog discovery and
+- [x] Add `goskill rules` for stable catalog discovery and
       `goskill explain <code>` for single-rule explanations.
-- [ ] Link each rule to its specification text, official guidance, or explicit
+- [x] Link each rule to its specification text, official guidance, or explicit
       portability evidence.
-- [ ] Keep explanation output derived from the rule catalog so it cannot drift
+- [x] Keep explanation output derived from the rule catalog so it cannot drift
       from diagnostics.
 
 ### 3. Recommended guidance

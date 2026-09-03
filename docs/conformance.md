@@ -91,6 +91,19 @@ still exits nonzero, but its complete JSON/SARIF document is the only stdout
 content. Invalid format flags, invalid sources, and other operational failures
 produce normal command errors instead of a partial report.
 
+## Rule catalog discovery
+
+`goskill rules` lists every stable validation rule in the catalog order used by
+the validator. `goskill explain <code>` shows one rule's summary, severity,
+minimum enabling profile, and its authoritative source or portability
+rationale. Command input is normalized by trimming whitespace and accepting
+lowercase rule codes; the output always uses the stable uppercase code.
+
+Both commands accept `--json`. `goskill rules --json` emits the complete ordered
+array of catalog rules, and `goskill explain --json <code>` emits that one rule.
+These outputs are deterministic and ANSI-free. Invalid command shapes and
+unknown codes fail without producing partial JSON.
+
 ## What the `spec` profile guarantees
 
 Strict validation checks only normative format requirements:
@@ -104,9 +117,9 @@ Strict validation checks only normative format requirements:
 - `metadata` as a string-to-string mapping; and
 - `allowed-tools` as a string.
 
-The stable rule catalog is exposed through `skills.Rules` and
-`skills.RulesForProfile`. Scripts that consume command output should use the
-bracketed rule code, not diagnostic text.
+The stable rule catalog is exposed through `skills.Rules`,
+`skills.RulesForProfile`, `goskill rules`, and `goskill explain`. Scripts
+should use the stable rule code rather than diagnostic text.
 
 ## What profiles do not guarantee
 

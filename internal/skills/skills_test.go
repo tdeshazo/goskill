@@ -127,6 +127,27 @@ func TestRulesHaveUniqueStableCodes(t *testing.T) {
 	}
 }
 
+func TestRuleForCodeNormalizesUserInput(t *testing.T) {
+	for _, input := range []string{"as001", " AS001 ", "As001"} {
+		rule, ok := RuleForCode(input)
+		if !ok || rule.Code != RuleSkillMDRequired {
+			t.Fatalf("RuleForCode(%q) = %#v, %v", input, rule, ok)
+		}
+	}
+	if got := NormalizeRuleCode(" gp310 "); got != RuleSkillFilename {
+		t.Fatalf("NormalizeRuleCode = %q", got)
+	}
+	if _, ok := RuleForCode("AS 001"); ok {
+		t.Fatal("malformed rule code was accepted")
+	}
+	if got := NormalizeRuleCode("aſ001"); got != "Aſ001" {
+		t.Fatalf("NormalizeRuleCode confusable = %q", got)
+	}
+	if _, ok := RuleForCode("aſ001"); ok {
+		t.Fatal("Unicode-confusable rule code was accepted")
+	}
+}
+
 func TestValidationLocationsUseYAMLNodesAndFileFallback(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "skill")

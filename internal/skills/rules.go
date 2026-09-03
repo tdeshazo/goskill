@@ -1,5 +1,7 @@
 package skills
 
+import "strings"
+
 const (
 	// SpecRepository identifies the immutable upstream repository that provides
 	// the specification snapshot used for conformance validation.
@@ -162,12 +164,26 @@ func RulesForProfile(profile Profile) []Rule {
 
 // RuleForCode returns stable metadata for code when it is part of the catalog.
 func RuleForCode(code string) (Rule, bool) {
+	code = NormalizeRuleCode(code)
 	for _, rule := range Rules() {
 		if rule.Code == code {
 			return rule, true
 		}
 	}
 	return Rule{}, false
+}
+
+// NormalizeRuleCode converts user-supplied rule codes to the catalog's stable
+// uppercase form. It intentionally only trims surrounding whitespace and
+// changes ASCII case so malformed and non-ASCII codes remain unknown to callers.
+func NormalizeRuleCode(code string) string {
+	normalized := []byte(strings.TrimSpace(code))
+	for i, char := range normalized {
+		if char >= 'a' && char <= 'z' {
+			normalized[i] = char - ('a' - 'A')
+		}
+	}
+	return string(normalized)
 }
 
 var allowedFrontmatterFields = map[string]bool{

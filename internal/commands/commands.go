@@ -96,6 +96,10 @@ func (a App) Run(args []string) error {
 		a.writeOut(renderVersionOutput(a.Version))
 	case "spec":
 		return a.Spec(rest)
+	case "rules":
+		return a.Rules(rest)
+	case "explain":
+		return a.Explain(rest)
 	case "add", "a":
 		src, opts, err := parseAdd(rest)
 		if err != nil {

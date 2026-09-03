@@ -221,6 +221,19 @@ run `goskill validate --version-info`. It prints the goskill build version, the
 embedded `agentskills/agentskills` revision, and selected validation profile;
 it accepts no skill source or machine-output format.
 
+Use `goskill rules` to list the complete stable catalog of validation rules, or
+`goskill explain <code>` for the full meaning and evidence behind one code.
+Both commands derive their content from the same catalog used by diagnostics;
+`--json` emits deterministic ANSI-free catalog data for scripts. Rule codes are
+case-insensitive at the command line, so `goskill explain as001` is accepted.
+
+```bash
+goskill rules
+goskill rules --json
+goskill explain AS001
+goskill explain --json gp310
+```
+
 `goskill validate` writes its existing readable text output by default. For
 automation, use `--format json` (or `--json`) for the complete deterministic
 validation report, or `--format sarif` (or `--sarif`) for SARIF 2.1.0. Machine

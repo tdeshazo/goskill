@@ -95,6 +95,8 @@ func renderBanner() string {
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("find"), "Search federated skill registries"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("agent"), "Inspect configured agent definitions"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("spec"), "Show the pinned Agent Skills specification"),
+		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("rules"), "List validation rules"),
+		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("explain"), "Explain a validation rule"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("validate"), "Validate SKILL.md files"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("check"), "Check locked skills for updates"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("update"), "Update locked skills"),
@@ -104,7 +106,7 @@ func renderBanner() string {
 }
 
 func renderHelp() string {
-	commands := "add, use, list, remove, find, agent, spec, validate, check, update, init, " +
+	commands := "add, use, list, remove, find, agent, spec, rules, explain, validate, check, update, init, " +
 		"install, sync"
 	return renderInfo("Usage",
 		selectorTitleStyle.Render("goskill <command> [options]"),
@@ -137,6 +139,53 @@ func renderValidateHelp() string {
 		"--json                Alias for --format json",
 		"--sarif               Alias for --format sarif",
 	)
+}
+
+func renderRulesHelp() string {
+	return renderInfo("Validation rules",
+		selectorTitleStyle.Render("goskill rules [--json]"),
+		"--json                Write the complete ANSI-free rule catalog as JSON",
+	)
+}
+
+func renderExplainHelp() string {
+	return renderInfo("Explain validation rule",
+		selectorTitleStyle.Render("goskill explain [--json] <code>"),
+		"--json                Write the complete ANSI-free rule metadata as JSON",
+	)
+}
+
+func renderRulesOutput(rules []skills.Rule) string {
+	lines := make([]string, 0, len(rules)*2)
+	for _, rule := range rules {
+		lines = append(lines,
+			selectorTitleStyle.Render(rule.Code)+"  "+rule.Summary,
+			selectorHintStyle.Render("  "+string(rule.Severity)+" · "+string(rule.Profile)+" · "+ruleEvidence(rule)),
+		)
+	}
+	return renderInfo("Validation rules", lines...)
+}
+
+func renderRuleOutput(rule skills.Rule) string {
+	lines := []string{
+		"Summary: " + rule.Summary,
+		"Severity: " + string(rule.Severity),
+		"Profile: " + string(rule.Profile),
+	}
+	if rule.Source != "" {
+		lines = append(lines, "Source: "+rule.Source)
+	}
+	if rule.Rationale != "" {
+		lines = append(lines, "Rationale: "+rule.Rationale)
+	}
+	return renderInfo("Rule "+rule.Code, lines...)
+}
+
+func ruleEvidence(rule skills.Rule) string {
+	if rule.Source != "" {
+		return "source: " + rule.Source
+	}
+	return "rationale: " + rule.Rationale
 }
 
 func renderValidationVersionInfo(version string, profile skills.Profile) string {
