@@ -112,18 +112,52 @@ when the installed staticcheck version supports this project's Go version.
 
 ## Release
 
-Use the Makefile to keep Go, Python, and tag versions synchronized:
+Release Please manages semantic versions and `CHANGELOG.md` from Conventional
+Commit messages on `main`. Prefer squash merges and format each PR title as:
+
+```text
+<type>(optional-scope): short imperative description
+```
+
+Common release types are `feat` for a minor release and `fix` for a patch.
+Mark breaking changes with `!` (for example, `feat(cli)!: remove legacy flag`)
+or a `BREAKING CHANGE:` footer. While the project is below `1.0.0`, breaking
+changes bump the minor version instead of the major version. The pull-request
+title check accepts `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
+`build`, `ci`, `chore`, and `revert`.
+
+After changes land on `main`, Release Please opens or updates a release PR. The
+PR synchronizes `pyproject.toml`, `internal/buildinfo/version.go`, the release
+manifest, and `CHANGELOG.md`. Merging it creates the `vX.Y.Z` tag and GitHub
+Release. The same workflow then builds the existing Linux, macOS, Windows, and
+wheel artifacts and uploads them to that Release. It uses the repository's
+`GITHUB_TOKEN`; no personal access token is required. Because events created by
+that token do not start other workflows, Release Please explicitly dispatches
+CI and title validation against each generated release PR.
+
+Repository Actions settings must grant workflows read/write access and allow
+GitHub Actions to create pull requests. Configure squash merging so the checked
+PR title becomes the commit message on `main`, and make the CI and Conventional
+Commit Title checks required on protected branches if branch protection is in
+use.
+
+The Makefile remains available as a manual fallback. It keeps Go, Python, the
+Release Please manifest, and tag versions synchronized:
 
 ```bash
 make lint
 make check-version
-make set-version VERSION=0.2.1
-make release VERSION=0.2.1
+make set-version VERSION=0.2.5
+make release VERSION=0.2.5
 ```
 
 `make lint` runs `go vet ./...`, the release lint gate. `make release` commits
-the version update, creates an annotated `v0.2.1` tag, and pushes the current
-branch plus tag to `origin`.
+the version update with a Conventional Commit message, creates an annotated
+tag, and pushes the current branch and tag to `origin`. A manually pushed `v*`
+tag invokes the same artifact workflow; if its GitHub Release does not exist,
+the workflow creates it before uploading artifacts. The Release Artifacts
+workflow can also be dispatched manually with an existing tag to retry a
+failed publication.
 
 ## Commands
 

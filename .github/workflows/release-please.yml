@@ -1,0 +1,67 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      release_pr: ${{ steps.release.outputs.pr }}
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Create release pull request or release
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  validate-pr:
+    name: Dispatch release PR validation
+    needs: release-please
+    if: needs.release-please.outputs.prs_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Dispatch validation workflows
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PR: ${{ needs.release-please.outputs.release_pr }}
+        shell: bash
+        run: |
+          HEAD_BRANCH="$(jq -r '.headBranchName' <<<"$RELEASE_PR")"
+          PR_TITLE="$(jq -r '.title' <<<"$RELEASE_PR")"
+          gh workflow run ci-cd.yml --ref "$HEAD_BRANCH"
+          gh workflow run conventional-commits.yml --ref "$HEAD_BRANCH" -f pr_title="$PR_TITLE"
+
+  publish:
+    name: Publish release artifacts
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag_name: ${{ needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: write

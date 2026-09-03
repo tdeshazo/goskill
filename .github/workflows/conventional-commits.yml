@@ -1,0 +1,31 @@
+name: Conventional Commit Title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_title:
+        description: Pull request title to validate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  title:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check Conventional Commit syntax
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title || inputs.pr_title }}
+        shell: bash
+        run: |
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([[:alnum:]./_-]+\))?!?: .+'
+          if [[ ! "$PR_TITLE" =~ $pattern ]]; then
+            echo "PR title must use Conventional Commit syntax, for example: feat(search): add provider" >&2
+            exit 1
+          fi

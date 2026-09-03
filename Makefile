@@ -3,6 +3,7 @@ SHELL := /bin/bash
 
 PYPROJECT := pyproject.toml
 GO_VERSION := internal/buildinfo/version.go
+RELEASE_MANIFEST := .release-please-manifest.json
 REMOTE ?= origin
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 CURRENT_VERSION := $(shell awk -F '"' '/^version = / { print $$2; exit }' $(PYPROJECT))
@@ -28,12 +29,13 @@ version:
 check-version:
 	@py_version="$$(awk -F '"' '/^version = / { print $$2; exit }' "$(PYPROJECT)")"; \
 	go_version="$$(awk -F '"' '/^var Version = / { print $$2; exit }' "$(GO_VERSION)")"; \
-	if [[ -z "$$py_version" || -z "$$go_version" ]]; then \
-		echo "could not read version from $(PYPROJECT) or $(GO_VERSION)" >&2; \
+	manifest_version="$$(awk -F '"' '/"\."[[:space:]]*:/ { print $$4; exit }' "$(RELEASE_MANIFEST)")"; \
+	if [[ -z "$$py_version" || -z "$$go_version" || -z "$$manifest_version" ]]; then \
+		echo "could not read version from $(PYPROJECT), $(GO_VERSION), or $(RELEASE_MANIFEST)" >&2; \
 		exit 1; \
 	fi; \
-	if [[ "$$py_version" != "$$go_version" ]]; then \
-		echo "version mismatch: $(PYPROJECT)=$$py_version $(GO_VERSION)=$$go_version" >&2; \
+	if [[ "$$py_version" != "$$go_version" || "$$py_version" != "$$manifest_version" ]]; then \
+		echo "version mismatch: $(PYPROJECT)=$$py_version $(GO_VERSION)=$$go_version $(RELEASE_MANIFEST)=$$manifest_version" >&2; \
 		exit 1; \
 	fi; \
 	printf 'version %s\n' "$$py_version"
@@ -44,6 +46,7 @@ lint:
 set-version: require-version
 	@perl -0pi -e 's/^version = "[^"]+"/version = "$(VERSION)"/m' "$(PYPROJECT)"
 	@perl -0pi -e 's/^var Version = "[^"]+"/var Version = "$(VERSION)"/m' "$(GO_VERSION)"
+	@perl -0pi -e 's/("\."\s*:\s*")[^"]+"/$${1}$(VERSION)"/' "$(RELEASE_MANIFEST)"
 	@$(MAKE) check-version
 
 ensure-clean:
@@ -67,8 +70,8 @@ ensure-new-tag: require-version check-version ensure-branch
 
 release-commit: require-version ensure-clean lint
 	@$(MAKE) set-version VERSION="$(VERSION)"
-	@git add "$(PYPROJECT)" "$(GO_VERSION)"
-	@git commit -m "Release $(TAG)"
+	@git add "$(PYPROJECT)" "$(GO_VERSION)" "$(RELEASE_MANIFEST)"
+	@git commit -m "chore: release $(TAG)"
 
 release-tag: ensure-new-tag
 	@git tag -a "$(TAG)" -m "$(TAG)"
