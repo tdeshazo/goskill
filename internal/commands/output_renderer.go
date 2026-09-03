@@ -94,6 +94,21 @@ func renderHelp() string {
 	)
 }
 
+func renderFindHelp() string {
+	return renderInfo("Find skills",
+		selectorTitleStyle.Render("goskill find [options] <query>"),
+		selectorHintStyle.Render("Search enabled registries, then deduplicate, filter, and rank results."),
+		selectorBar(),
+		"--deep                 Include bounded GitHub long-tail discovery",
+		"--refresh              Refresh static catalogs before searching",
+		"--verified             Keep verified or positively audited results",
+		"--provider <name>      Keep results contributed by one provider",
+		"--sort <mode>          relevance (default), popular, or newest",
+		"--json                 Write normalized ANSI-free JSON",
+		"--providers            List provider capabilities and availability",
+	)
+}
+
 func renderSkillDiscoveryList(list []skills.Skill, title string) string {
 	lines := []string{
 		selectorActiveStyle.Render("◆") + "  " + selectorTitleStyle.Render(title),
@@ -147,22 +162,119 @@ func renderFindResults(query string, results []search.SearchResult) string {
 		selectorHintStyle.Render(fmt.Sprintf("%d result%s for %s", len(results), skillPlural(len(results)), query)),
 		selectorBar(),
 	}
-	lastSource := ""
-	for _, skill := range sortedFoundSkillsBySource(results) {
+	for _, skill := range results {
 		source := findSourceGroup(skill.CanonicalSource)
-		if source != lastSource {
-			if lastSource != "" {
-				lines = append(lines, selectorBar())
-			}
-			lines = append(lines, selectorGroupLine(source, 88))
-			lastSource = source
+		provider := providerProvenanceLabel(skill)
+		identity := selectorHintStyle.Render(source)
+		if provider != "" {
+			identity += " " + selectorDimStyle.Render("["+provider+"]")
+		}
+		signals := findSignalLabel(skill)
+		if signals != "" {
+			signals = " " + selectorHintStyle.Render("("+signals+")")
 		}
 		lines = append(lines,
-			fmt.Sprintf("%s %s %s", selectorSelected.Render("●"), selectorTitleStyle.Render(skill.Name), selectorHintStyle.Render(fmt.Sprintf("(%d install%s)", skill.Installs, skillPlural(skill.Installs)))),
+			fmt.Sprintf("%s %s %s%s", selectorSelected.Render("●"), selectorTitleStyle.Render(skill.Name), identity, signals),
+		)
+		if skill.Description != "" {
+			lines = append(lines, "  "+selectorHintStyle.Render(skill.Description))
+		}
+		lines = append(lines,
 			"  "+selectorDimStyle.Render(findInstallCommand(skill)),
 		)
 	}
 	return renderInfo("Find skills", lines...)
+}
+
+func findSignalLabel(skill search.SearchResult) string {
+	signals := []string{}
+	if skill.Installs > 0 {
+		signals = append(signals, fmt.Sprintf("%d install%s", skill.Installs, skillPlural(skill.Installs)))
+	}
+	if skill.Stars > 0 {
+		signals = append(signals, fmt.Sprintf("%d stars", skill.Stars))
+	}
+	if skill.Rating > 0 {
+		signals = append(signals, fmt.Sprintf("%.1f rating", skill.Rating))
+	}
+	if skill.VerificationStatus != "" {
+		signals = append(signals, skill.VerificationStatus)
+	}
+	if skill.AuditStatus != "" {
+		signals = append(signals, "audit "+skill.AuditStatus)
+	}
+	if !skill.UpdatedAt.IsZero() {
+		signals = append(signals, "updated "+skill.UpdatedAt.UTC().Format("2006-01-02"))
+	}
+	return strings.Join(signals, " · ")
+}
+
+func renderFindProviderStatuses(statuses []search.ConfiguredProviderStatus) string {
+	lines := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		capabilities := status.Descriptor.Capabilities
+		auth := "no auth required"
+		if capabilities.AuthRequired {
+			auth = "auth required"
+		}
+		availability := firstNonEmpty(capabilities.Availability, "live")
+		visibility := firstNonEmpty(capabilities.Visibility, "public")
+		cost := firstNonEmpty(capabilities.DeepCost, "none")
+		state := "enabled"
+		if !status.Enabled {
+			state = "disabled"
+		}
+		if status.Err != nil {
+			state = "unavailable"
+		}
+		line := fmt.Sprintf("%s %s %s · %s · %s · %s · %s",
+			selectorSelected.Render("●"),
+			selectorTitleStyle.Render(status.Name),
+			selectorHintStyle.Render(visibility),
+			selectorHintStyle.Render(availability),
+			selectorHintStyle.Render("deep cost "+cost),
+			selectorHintStyle.Render(auth),
+			selectorHintStyle.Render(state),
+		)
+		if status.Err != nil {
+			line += " " + selectorWarningStyle.Render("("+status.Err.Error()+")")
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		lines = append(lines, selectorHintStyle.Render("No optional providers configured."))
+	}
+	return renderInfo("Find providers", lines...)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func providerProvenanceLabel(skill search.SearchResult) string {
+	providers := append([]string(nil), skill.Providers...)
+	if len(providers) == 0 && skill.Provider != "" {
+		providers = []string{skill.Provider}
+	}
+	labels := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		switch provider {
+		case "skillmd":
+			labels = append(labels, "SkillMD")
+		case "github":
+			labels = append(labels, "GitHub")
+		case "truefoundry":
+			labels = append(labels, "TrueFoundry")
+		default:
+			labels = append(labels, provider)
+		}
+	}
+	return strings.Join(labels, " · ")
 }
 
 func renderValidationResults(results []validationResult, total int, issueCount int, cwd string) string {

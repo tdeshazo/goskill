@@ -41,6 +41,8 @@ type BlobInstallResult struct {
 	Tree   RepoTree
 }
 
+const maxHTTPResponseSize = 5 * 1024 * 1024
+
 var downloadBase = envDefault("SKILLS_DOWNLOAD_URL", "https://skills.sh")
 
 func Clone(repoURL, ref string) (string, func(), error) {
@@ -96,10 +98,7 @@ func FetchRepoTree(ownerRepo, ref string) (RepoTree, bool) {
 	if ref != "" {
 		branches = []string{ref}
 	}
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		token = os.Getenv("GH_TOKEN")
-	}
+	token := AuthToken()
 	for _, branch := range branches {
 		tree, ok := fetchTreeBranch(ownerRepo, branch, token)
 		if ok {
@@ -281,19 +280,7 @@ func fetchRawSkillMD(ownerRepo, branch, skillPath string) (string, bool) {
 	u := fmt.Sprintf("%s/%s/%s/%s", rawBase, ownerRepo, url.PathEscape(branch), skillPath)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return "", false
-	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", false
-	}
-	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return "", false
-	}
-	body, err := io.ReadAll(res.Body)
+	body, err := Fetch(ctx, http.DefaultClient, u, "")
 	return string(body), err == nil
 }
 
@@ -310,27 +297,44 @@ func fetchDownload(source, slug string) (DownloadResponse, bool) {
 func fetchJSON(u, token string, out any) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return false
+	body, err := Fetch(ctx, http.DefaultClient, u, token)
+	return err == nil && json.Unmarshal(body, out) == nil
+}
+
+// Fetch performs a bounded GitHub HTTP request using goskill's shared headers
+// and optional bearer authentication. Callers should avoid including endpoint
+// URLs or token values in their own errors.
+func Fetch(ctx context.Context, client *http.Client, endpoint, token string) ([]byte, error) {
+	if client == nil {
+		client = http.DefaultClient
 	}
-	req.Header.Set("Accept", "application/json")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, errors.New("create GitHub request")
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "skills-cli-go")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	res, err := http.DefaultClient.Do(req)
+	res, err := client.Do(req)
 	if err != nil {
-		return false
+		return nil, err
 	}
 	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return false
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("GitHub request failed: %s", res.Status)
 	}
-	return json.NewDecoder(res.Body).Decode(out) == nil
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxHTTPResponseSize+1))
+	if err != nil || len(body) > maxHTTPResponseSize {
+		return nil, errors.New("read GitHub response")
+	}
+	return body, nil
 }
 
-func parseRemoteSkill(raw string, includeInternal bool) (skills.Skill, bool) {
+// ParseRemoteSkill parses and validates remote SKILL.md content using the same
+// frontmatter rules as the GitHub blob installation path.
+func ParseRemoteSkill(raw string, includeInternal bool) (skills.Skill, bool) {
 	data := skills.ParseFrontmatter(raw)
 	name, _ := data["name"].(string)
 	desc, _ := data["description"].(string)
@@ -343,6 +347,19 @@ func parseRemoteSkill(raw string, includeInternal bool) (skills.Skill, bool) {
 		}
 	}
 	return skills.Skill{Name: name, Description: desc, RawContent: raw}, true
+}
+
+func parseRemoteSkill(raw string, includeInternal bool) (skills.Skill, bool) {
+	return ParseRemoteSkill(raw, includeInternal)
+}
+
+// AuthToken returns the GitHub token using goskill's established environment
+// variable precedence.
+func AuthToken() string {
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		return token
+	}
+	return os.Getenv("GH_TOKEN")
 }
 
 func cloneTimeout() time.Duration {

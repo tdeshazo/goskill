@@ -9,7 +9,7 @@ CURRENT_VERSION := $(shell awk -F '"' '/^version = / { print $$2; exit }' $(PYPR
 VERSION ?=
 TAG := v$(VERSION)
 
-.PHONY: help version check-version set-version ensure-clean ensure-branch ensure-new-tag ensure-existing-tag release-commit release-tag push-release release require-version
+.PHONY: help version check-version lint set-version ensure-clean ensure-branch ensure-new-tag ensure-existing-tag release-commit release-tag push-release release require-version
 
 help:
 	@printf '%s\n' \
@@ -38,6 +38,9 @@ check-version:
 	fi; \
 	printf 'version %s\n' "$$py_version"
 
+lint:
+	go vet ./...
+
 set-version: require-version
 	@perl -0pi -e 's/^version = "[^"]+"/version = "$(VERSION)"/m' "$(PYPROJECT)"
 	@perl -0pi -e 's/^var version = "[^"]+"/var version = "$(VERSION)"/m' "$(GO_MAIN)"
@@ -62,7 +65,7 @@ ensure-new-tag: require-version check-version ensure-branch
 		exit 1; \
 	fi
 
-release-commit: require-version ensure-clean
+release-commit: require-version ensure-clean lint
 	@$(MAKE) set-version VERSION="$(VERSION)"
 	@git add "$(PYPROJECT)" "$(GO_MAIN)"
 	@git commit -m "Release $(TAG)"

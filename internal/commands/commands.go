@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"github.com/tdeshazo/goskill/internal/agents"
+	"github.com/tdeshazo/goskill/internal/catalog"
 	"github.com/tdeshazo/goskill/internal/github"
 	"github.com/tdeshazo/goskill/internal/installer"
 	"github.com/tdeshazo/goskill/internal/lockfile"
+	"github.com/tdeshazo/goskill/internal/remoteskill"
 	"github.com/tdeshazo/goskill/internal/search"
 	"github.com/tdeshazo/goskill/internal/skills"
 	"github.com/tdeshazo/goskill/internal/source"
@@ -58,6 +60,16 @@ type RemoveOptions struct {
 	Agent  []string
 	Yes    bool
 	All    bool
+}
+
+type FindOptions struct {
+	Deep      bool
+	Refresh   bool
+	JSON      bool
+	Verified  bool
+	Providers bool
+	Provider  string
+	Sort      search.SortMode
 }
 
 func (a App) Run(args []string) error {
@@ -437,32 +449,183 @@ func (a App) Remove(skillNames []string, opts RemoveOptions) error {
 }
 
 func (a App) Find(args []string) error {
-	query := strings.TrimSpace(strings.Join(args, " "))
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		a.writeOut(renderFindHelp())
+		return nil
+	}
+	queryArgs, opts, err := parseFind(args)
+	if err != nil {
+		return err
+	}
+	if opts.Providers {
+		if len(queryArgs) > 0 {
+			return errors.New("--providers does not accept a query")
+		}
+		return a.FindProviders(opts)
+	}
+	query := strings.TrimSpace(strings.Join(queryArgs, " "))
 	if query == "" {
-		return errors.New("usage: skills find <query>")
+		return errors.New("usage: goskill find [--deep] [--refresh] [--verified] [--provider <name>] [--sort relevance|popular|newest] [--json] <query>\n       goskill find --providers")
 	}
 	apiBase := envDefault("SKILLS_API_URL", "https://skills.sh")
 	ctx, cancel := context.WithTimeout(context.Background(), findTimeout)
 	defer cancel()
-	provider := search.NewSkillsSHProviderWithOptions(search.SkillsSHProviderOptions{
+	providers := []search.SearchProvider{search.NewSkillsSHProviderWithOptions(search.SkillsSHProviderOptions{
 		BaseURL:         apiBase,
 		RichSearchURL:   os.Getenv("SKILLS_RICH_SEARCH_URL"),
 		LegacySearchURL: os.Getenv("SKILLS_SEARCH_URL"),
 		AuthToken:       first(os.Getenv("SKILLS_API_TOKEN"), os.Getenv("VERCEL_OIDC_TOKEN")),
 		Timeout:         findEndpointTimeout,
-	})
-	response, err := search.NewAggregator(provider).Search(ctx, search.SearchQuery{
+	})}
+	if !envEnabled("GOSKILL_DISABLE_SKILLMD") {
+		providers = append(providers, search.NewSkillMDProviderWithOptions(search.SkillMDProviderOptions{
+			BaseURL:   os.Getenv("SKILLMD_API"),
+			SearchURL: os.Getenv("SKILLMD_SEARCH_URL"),
+			Timeout:   findEndpointTimeout,
+		}))
+	}
+	if opts.Deep {
+		providers = append(providers, search.NewGitHubProvider())
+	}
+	var trueFoundry *catalog.SearchProvider
+	if !envEnabled("GOSKILL_DISABLE_TRUEFOUNDRY_CATALOG") {
+		trueFoundry = catalog.NewSearchProvider(
+			catalog.NewTrueFoundryProvider(os.Getenv("TRUEFOUNDRY_CATALOG_URL"), nil),
+			catalog.NewStore(os.Getenv("GOSKILL_CATALOG_CACHE_DIR"), catalogTTL()),
+			opts.Refresh,
+		)
+		providers = append(providers, trueFoundry)
+	}
+	optionalProviders, configuredStatuses, configurationErr := configuredSearchProviders()
+	providers = append(providers, optionalProviders...)
+	searchQuery := search.SearchQuery{
 		Text:  query,
 		Limit: 10,
-	})
+	}
+	response, err := search.NewAggregator(providers...).Search(ctx, searchQuery)
 	if err != nil {
 		return err
 	}
 	if !response.HasSuccessfulProvider() {
 		return response.FirstError()
 	}
-	a.writeOut(renderFindResults(query, response.Results))
+	if configurationErr != nil {
+		response.Providers = append(response.Providers, search.ProviderStatus{
+			Provider: "optional provider configuration",
+			Err:      configurationErr,
+		})
+	}
+	for _, status := range configuredStatuses {
+		if status.Err == nil {
+			continue
+		}
+		response.Providers = append(response.Providers, search.ProviderStatus{
+			Provider: status.Name,
+			Err:      status.ProviderStatusError(),
+		})
+	}
+	if opts.Refresh && trueFoundry != nil {
+		status := trueFoundry.Status()
+		switch {
+		case status.RefreshErr != nil && status.Stale:
+			a.writeErr(renderWarning("Catalog refresh", "Using the cached TrueFoundry catalog; refresh failed."))
+		case status.RefreshErr != nil:
+			a.writeErr(renderWarning("Catalog refresh", "TrueFoundry catalog refresh failed."))
+		case status.Refreshed:
+			a.writeErr(renderInfo("Catalog refreshed", "TrueFoundry awesome-skills-registry"))
+		}
+	}
+	results := search.FilterAndRank(response.Results, searchQuery, search.ResultFilter{
+		Verified: opts.Verified,
+		Provider: opts.Provider,
+	}, opts.Sort)
+	if opts.JSON {
+		encoded, err := renderFindJSON(results, response.Providers)
+		if err != nil {
+			return err
+		}
+		a.writeOut(encoded)
+		return nil
+	}
+	if len(results) == 0 {
+		a.writeProviderStatusIfMaterial(response.Providers)
+	}
+	a.writeOut(renderFindResults(query, results))
 	return nil
+}
+
+func parseFind(args []string) ([]string, FindOptions, error) {
+	opts := FindOptions{Sort: search.SortRelevance}
+	query := make([]string, 0, len(args))
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		switch arg {
+		case "--deep":
+			opts.Deep = true
+			continue
+		case "--refresh":
+			opts.Refresh = true
+			continue
+		case "--verified":
+			opts.Verified = true
+			continue
+		case "--json":
+			opts.JSON = true
+			continue
+		case "--providers":
+			opts.Providers = true
+			continue
+		case "--provider", "--sort":
+			if index+1 >= len(args) || strings.HasPrefix(args[index+1], "--") {
+				return nil, FindOptions{}, fmt.Errorf("%s requires a value", arg)
+			}
+			value := strings.TrimSpace(args[index+1])
+			index++
+			if value == "" {
+				return nil, FindOptions{}, fmt.Errorf("%s requires a value", arg)
+			}
+			if arg == "--provider" {
+				opts.Provider = value
+				continue
+			}
+			opts.Sort = search.SortMode(strings.ToLower(value))
+			if !opts.Sort.Valid() {
+				return nil, FindOptions{}, fmt.Errorf("invalid --sort value %q (want relevance, popular, or newest)", value)
+			}
+			continue
+		}
+		if value, ok := strings.CutPrefix(arg, "--provider="); ok {
+			if strings.TrimSpace(value) == "" {
+				return nil, FindOptions{}, errors.New("--provider requires a value")
+			}
+			opts.Provider = strings.TrimSpace(value)
+			continue
+		}
+		if value, ok := strings.CutPrefix(arg, "--sort="); ok {
+			opts.Sort = search.SortMode(strings.ToLower(strings.TrimSpace(value)))
+			if !opts.Sort.Valid() {
+				return nil, FindOptions{}, fmt.Errorf("invalid --sort value %q (want relevance, popular, or newest)", value)
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "--") {
+			return nil, FindOptions{}, fmt.Errorf("unknown find option %q", arg)
+		}
+		query = append(query, arg)
+	}
+	return query, opts, nil
+}
+
+func catalogTTL() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("GOSKILL_CATALOG_TTL"))
+	if raw == "" {
+		return -1
+	}
+	duration, err := time.ParseDuration(raw)
+	if err == nil && duration >= 0 {
+		return duration
+	}
+	return -1
 }
 
 func (a App) Validate(args []string) error {
@@ -798,6 +961,32 @@ func (a App) resolveSkills(parsed source.Parsed, opts AddOptions) (resolvedSkill
 			list = append(list, item.Skill)
 		}
 		return resolvedSkills{skills: list, sourceID: wellknown.SourceIdentifier(parsed.URL)}, nil, nil
+	case source.ConfiguredWellKnown:
+		provider, err := configuredWellKnownProvider(parsed.URL)
+		if err != nil {
+			return resolvedSkills{}, nil, err
+		}
+		results, err := provider.Search(context.Background(), search.SearchQuery{Text: parsed.SkillFilter, Limit: 10})
+		if err != nil {
+			return resolvedSkills{}, nil, errors.New("fetch configured well-known skill")
+		}
+		for _, result := range results {
+			if !strings.EqualFold(result.Name, parsed.SkillFilter) || result.InstallURL == "" {
+				continue
+			}
+			skill, err := provider.FetchSkill(result)
+			if err != nil {
+				return resolvedSkills{}, nil, err
+			}
+			return resolvedSkills{skills: []skills.Skill{skill}, sourceID: "wellknown/" + parsed.URL}, nil, nil
+		}
+		return resolvedSkills{}, nil, errors.New("configured well-known skill was not found")
+	case source.SkillURL:
+		skill, err := remoteskill.Fetch(parsed.URL)
+		if err != nil {
+			return resolvedSkills{}, nil, err
+		}
+		return resolvedSkills{skills: []skills.Skill{skill}, sourceID: parsed.URL}, nil, nil
 	case source.GitHub:
 		ownerRepo := source.OwnerRepo(parsed)
 		if ownerRepo != "" {
@@ -825,6 +1014,31 @@ func (a App) resolveSkills(parsed source.Parsed, opts AddOptions) (resolvedSkill
 	default:
 		return resolvedSkills{}, nil, errors.New("unsupported source")
 	}
+}
+
+func configuredWellKnownProvider(name string) (*search.WellKnownProvider, error) {
+	configs, err := search.LoadConfiguredProviders()
+	if err != nil {
+		return nil, err
+	}
+	for _, config := range configs {
+		if config.Disabled || config.Kind != "well-known" || !strings.EqualFold(config.Name, name) {
+			continue
+		}
+		providers, statuses := search.DefaultProviderRegistry().Build(
+			[]search.ProviderConfig{config},
+			search.EnvironmentCredentialResolver{},
+		)
+		if len(statuses) != 1 || statuses[0].Err != nil || len(providers) != 1 {
+			return nil, errors.New("configured well-known provider is unavailable")
+		}
+		provider, ok := providers[0].(*search.WellKnownProvider)
+		if !ok {
+			return nil, errors.New("configured provider is not well-known")
+		}
+		return provider, nil
+	}
+	return nil, errors.New("configured well-known provider was not found")
 }
 
 func skillsWithRepoPaths(list []skills.Skill, basePath string) []skills.Skill {
@@ -1039,6 +1253,11 @@ func envDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envEnabled(key string) bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	return value == "1" || value == "true" || value == "yes" || value == "on"
 }
 
 func containsStringFold(list []string, value string) bool {

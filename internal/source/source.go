@@ -11,11 +11,13 @@ import (
 type Type string
 
 const (
-	GitHub    Type = "github"
-	GitLab    Type = "gitlab"
-	Git       Type = "git"
-	Local     Type = "local"
-	WellKnown Type = "well-known"
+	GitHub              Type = "github"
+	GitLab              Type = "gitlab"
+	Git                 Type = "git"
+	Local               Type = "local"
+	WellKnown           Type = "well-known"
+	ConfiguredWellKnown Type = "configured-well-known"
+	SkillURL            Type = "skill-url"
 )
 
 type Parsed struct {
@@ -55,6 +57,13 @@ func Parse(input string) (Parsed, error) {
 	}
 	if strings.HasPrefix(input, "gitlab:") {
 		return Parse("https://gitlab.com/" + input[len("gitlab:"):] + fragmentSuffix(ref, fragmentSkill))
+	}
+	if strings.HasPrefix(input, "wellknown:") {
+		name, skill, ok := parseConfiguredWellKnown(input[len("wellknown:"):])
+		if !ok {
+			return Parsed{}, errors.New("invalid configured well-known source")
+		}
+		return Parsed{Type: ConfiguredWellKnown, URL: name, SkillFilter: skill}, nil
 	}
 
 	if m := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)`).FindStringSubmatch(input); m != nil {
@@ -100,10 +109,24 @@ func Parse(input string) (Parsed, error) {
 		return Parsed{Type: GitHub, URL: "https://github.com/" + m[1] + "/" + m[2] + ".git", Ref: ref, Subpath: sub, SkillFilter: fragmentSkill}, nil
 	}
 
+	if isDirectSkillURL(input) {
+		return Parsed{Type: SkillURL, URL: input}, nil
+	}
 	if isWellKnownURL(input) {
 		return Parsed{Type: WellKnown, URL: input}, nil
 	}
 	return Parsed{Type: Git, URL: input, Ref: ref}, nil
+}
+
+func parseConfiguredWellKnown(raw string) (string, string, bool) {
+	name, skill, found := strings.Cut(strings.TrimSpace(raw), "@")
+	if !found || strings.TrimSpace(name) == "" || strings.TrimSpace(skill) == "" {
+		return "", "", false
+	}
+	if strings.ContainsAny(name, "/\\?#") {
+		return "", "", false
+	}
+	return strings.TrimSpace(name), strings.TrimSpace(skill), true
 }
 
 func OwnerRepo(p Parsed) string {
@@ -188,6 +211,18 @@ func isWellKnownURL(input string) bool {
 		return false
 	}
 	return !strings.HasSuffix(input, ".git")
+}
+
+// isDirectSkillURL recognizes a direct SKILL.md artifact. Registries such as
+// SkillMD expose these at a stable /raw endpoint, which goskill can install as
+// a single-file skill without treating the URL as a well-known index.
+func isDirectSkillURL(input string) bool {
+	u, err := url.Parse(input)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	path := strings.ToLower(strings.TrimSuffix(u.Path, "/"))
+	return strings.HasSuffix(path, "/skill.md") || strings.HasSuffix(path, "/raw")
 }
 
 func fragmentSuffix(ref, skill string) string {

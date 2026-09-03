@@ -3,10 +3,14 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tdeshazo/goskill/internal/agents"
 	"github.com/tdeshazo/goskill/internal/installer"
@@ -277,6 +281,638 @@ func TestRenderFindResultsGroupsBySourceAndIncludesInstallCommands(t *testing.T)
 		if strings.Contains(view, unwanted) {
 			t.Fatalf("view should not contain %q:\n%s", unwanted, view)
 		}
+	}
+}
+
+func TestRenderFindResultsShowsDiscoveryProvider(t *testing.T) {
+	view := renderFindResults("pdf", []search.SearchResult{{
+		Name:            "PDF",
+		Provider:        "skillmd",
+		CanonicalSource: "https://api.skillmd.com/api/skills/owner/pdf/raw",
+	}})
+	if !strings.Contains(view, "[SkillMD]") {
+		t.Fatalf("view missing provider:\n%s", view)
+	}
+}
+
+func TestRenderFindResultsShowsMergedProviderProvenance(t *testing.T) {
+	view := renderFindResults("web", []search.SearchResult{{
+		Name:            "Web",
+		CanonicalSource: "owner/repo",
+		Providers:       []string{"skills.sh", "skillmd", "github"},
+	}})
+	if !strings.Contains(view, "[skills.sh · SkillMD · GitHub]") {
+		t.Fatalf("view missing provenance:\n%s", view)
+	}
+}
+
+func TestRenderFindResultsIncludesAvailableSignalsWithoutZeroValueNoise(t *testing.T) {
+	view := renderFindResults("web", []search.SearchResult{{
+		Name:               "Web",
+		Description:        "Browser guidance",
+		CanonicalSource:    "owner/web",
+		Providers:          []string{"skills.sh", "skillmd"},
+		Installs:           12,
+		Stars:              4,
+		Rating:             4.5,
+		VerificationStatus: "verified",
+		UpdatedAt:          time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+	}, {
+		Name:            "Unknown",
+		CanonicalSource: "owner/unknown",
+	}})
+	for _, want := range []string{
+		"owner/web", "[skills.sh · SkillMD]", "12 installs", "4 stars", "4.5 rating", "verified", "updated 2026-06-01", "Browser guidance",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "0 installs") || strings.Contains(view, "0 stars") {
+		t.Fatalf("view includes unavailable zero-value signals:\n%s", view)
+	}
+}
+
+func TestParseFindOptionsAndValidation(t *testing.T) {
+	query, options, err := parseFind([]string{"--deep", "--verified", "--provider", "SkillMD", "--sort=newest", "--json", "react", "hooks"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(query, " "), "react hooks"; got != want {
+		t.Fatalf("query = %q, want %q", got, want)
+	}
+	if !options.Deep || !options.Verified || !options.JSON || options.Provider != "SkillMD" || options.Sort != search.SortNewest {
+		t.Fatalf("options = %#v", options)
+	}
+	for _, args := range [][]string{{"--sort", "oldest", "react"}, {"--provider"}, {"--unknown", "react"}} {
+		if _, _, err := parseFind(args); err == nil {
+			t.Fatalf("parseFind(%#v) succeeded", args)
+		}
+	}
+}
+
+func TestFindHelpUsesReleaseNamesAndDocumentsFlags(t *testing.T) {
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: t.TempDir()}
+	if err := app.Find([]string{"--help"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"goskill find [options] <query>", "--deep", "--refresh", "--verified", "--provider", "--sort", "--json", "--providers"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("find help missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestFindProvidersReportsConfiguredAvailabilityWithoutSearching(t *testing.T) {
+	t.Setenv("GOSKILL_PROVIDER_CONFIG_JSON", `{
+  "providers": [
+    {"name":"acme","kind":"well-known","endpoint":"https://skills.acme.example","enabled":false}
+  ]
+}`)
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: t.TempDir()}
+	if err := app.Find([]string{"--providers"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Find providers", "skills.sh", "SkillMD", "TrueFoundry", "GitHub", "acme", "disabled", "deep cost high"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("provider diagnostics missing %q:\n%s", want, out.String())
+		}
+	}
+	if err := app.Find([]string{"--providers", "web"}); err == nil {
+		t.Fatal("--providers accepted a query")
+	}
+}
+
+func TestFindToleratesUnknownOptionalProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rich":
+			w.WriteHeader(http.StatusNotFound)
+		case "/legacy":
+			_, _ = w.Write([]byte(`{"skills":[{"name":"working","source":"owner/repo"}]}`))
+		default:
+			t.Fatalf("unexpected request: %s", r.URL.String())
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("SKILLS_RICH_SEARCH_URL", server.URL+"/rich")
+	t.Setenv("SKILLS_SEARCH_URL", server.URL+"/legacy")
+	t.Setenv("GOSKILL_DISABLE_SKILLMD", "1")
+	t.Setenv("GOSKILL_DISABLE_TRUEFOUNDRY_CATALOG", "1")
+	t.Setenv("GOSKILL_PROVIDER_CONFIG_JSON", `{"providers":[{"name":"future","kind":"future-provider","endpoint":"https://future.example"}]}`)
+
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: t.TempDir()}
+	if err := app.Find([]string{"working"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "working") {
+		t.Fatalf("find output = %s", out.String())
+	}
+}
+
+func TestRenderFindJSONIsANSIInsensitiveAndIncludesNormalizedModel(t *testing.T) {
+	output, err := renderFindJSON([]search.SearchResult{{
+		Name:            "Web",
+		Provider:        "skillmd",
+		CanonicalSource: "owner/web",
+		Providers:       []string{"skillmd", "github"},
+		Provenance: []search.ProviderProvenance{{
+			Provider: "skillmd",
+			Name:     "Web",
+		}},
+	}}, []search.ProviderStatus{{Provider: "skillmd"}, {Provider: "github", Err: errors.New("rate limited")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output, "\x1b[") {
+		t.Fatalf("JSON contains ANSI: %q", output)
+	}
+	for _, want := range []string{"\"results\"", "\"canonical_source\": \"owner/web\"", "\"provenance\"", "\"providers\"", "\"rate limited\""} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("JSON missing %q: %s", want, output)
+		}
+	}
+}
+
+func TestFindJSONAppliesProviderAndVerifiedFilters(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rich":
+			w.WriteHeader(http.StatusNotFound)
+		case "/legacy":
+			_, _ = w.Write([]byte(`{"skills":[{"name":"verified","source":"owner/verified","installs":10,"verificationStatus":"verified"},{"name":"unverified","source":"owner/unverified","installs":100}]}`))
+		default:
+			t.Fatalf("unexpected request: %s", r.URL.String())
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("SKILLS_RICH_SEARCH_URL", server.URL+"/rich")
+	t.Setenv("SKILLS_SEARCH_URL", server.URL+"/legacy")
+	t.Setenv("GOSKILL_DISABLE_SKILLMD", "1")
+	t.Setenv("GOSKILL_DISABLE_TRUEFOUNDRY_CATALOG", "1")
+
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: t.TempDir()}
+	if err := app.Find([]string{"--json", "--verified", "--provider", "skills.sh", "--sort", "popular", "skill"}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "\x1b[") {
+		t.Fatalf("JSON contains ANSI: %q", out.String())
+	}
+	var response struct {
+		Results []search.SearchResult `json:"results"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+		t.Fatalf("find JSON = %s: %v", out.String(), err)
+	}
+	if len(response.Results) != 1 || response.Results[0].Name != "verified" {
+		t.Fatalf("filtered results = %#v", response.Results)
+	}
+}
+
+func TestFindFederatesDeduplicatesFiltersAndReportsPartialFailureInJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rich":
+			w.WriteHeader(http.StatusNotFound)
+		case "/legacy":
+			_, _ = w.Write([]byte(`{"skills":[{"name":"Web guide","source":"https://github.com/acme/web/tree/main/skills/web","installs":12,"verificationStatus":"verified"}]}`))
+		case "/skillmd":
+			_, _ = w.Write([]byte(`{"items":[{"slug":"acme/web","title":"Web guide","source_url":"https://github.com/acme/web/blob/main/skills/web/SKILL.md","installs":50,"verified":true}]}`))
+		case "/registry/.well-known/agent-skills/index.json", "/registry/.well-known/skills/index.json":
+			w.WriteHeader(http.StatusServiceUnavailable)
+		default:
+			t.Fatalf("unexpected request: %s", r.URL.String())
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("SKILLS_RICH_SEARCH_URL", server.URL+"/rich")
+	t.Setenv("SKILLS_SEARCH_URL", server.URL+"/legacy")
+	t.Setenv("SKILLMD_SEARCH_URL", server.URL+"/skillmd")
+	t.Setenv("GOSKILL_DISABLE_TRUEFOUNDRY_CATALOG", "1")
+	t.Setenv("GOSKILL_PROVIDER_CONFIG_JSON", `{"providers":[{"name":"offline-registry","kind":"well-known","endpoint":"`+server.URL+`/registry"}]}`)
+
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: t.TempDir()}
+	if err := app.Find([]string{"--json", "--provider", "skillmd", "--verified", "--sort", "popular", "web"}); err != nil {
+		t.Fatal(err)
+	}
+	var response struct {
+		Results   []search.SearchResult `json:"results"`
+		Providers []struct {
+			Provider string `json:"provider"`
+			Error    string `json:"error"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+		t.Fatalf("find JSON = %s: %v", out.String(), err)
+	}
+	if len(response.Results) != 1 {
+		t.Fatalf("results = %#v", response.Results)
+	}
+	result := response.Results[0]
+	if result.Name != "Web guide" || result.Installs != 50 || !containsStringFold(result.Providers, "skills.sh") || !containsStringFold(result.Providers, "skillmd") {
+		t.Fatalf("merged result = %#v", result)
+	}
+	for _, status := range response.Providers {
+		if status.Provider == "offline-registry" && status.Error != "" {
+			return
+		}
+	}
+	t.Fatalf("partial provider failure missing from %#v", response.Providers)
+}
+
+func TestFindInstallCommandUsesDirectSkillURLWithoutSelector(t *testing.T) {
+	got := findInstallCommand(search.SearchResult{
+		Name:            "display name",
+		CanonicalSource: "https://api.skillmd.com/api/skills/owner/demo/raw",
+	})
+	want := "goskill add https://api.skillmd.com/api/skills/owner/demo/raw"
+	if got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestFindInstallCommandPrefersDirectInstallURLOverCanonicalSource(t *testing.T) {
+	got := findInstallCommand(search.SearchResult{
+		Name:            "display name",
+		CanonicalSource: "owner/repo",
+		InstallURL:      "https://api.skillmd.com/api/skills/owner/demo/raw",
+	})
+	want := "goskill add https://api.skillmd.com/api/skills/owner/demo/raw"
+	if got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestFindInstallCommandScopesDuplicateGitHubSkillNamesToTheirDirectories(t *testing.T) {
+	first := findInstallCommand(search.SearchResult{
+		Name:            "duplicate",
+		CanonicalSource: "acme/repo",
+		SkillPath:       "skills/first/SKILL.md",
+		ProviderMetadata: map[string]any{
+			"default_branch": "main",
+		},
+	})
+	second := findInstallCommand(search.SearchResult{
+		Name:            "duplicate",
+		CanonicalSource: "acme/repo",
+		SkillPath:       "skills/second/SKILL.md",
+		ProviderMetadata: map[string]any{
+			"default_branch": "main",
+		},
+	})
+	if first == second {
+		t.Fatalf("duplicate skill names must have distinct commands: %q", first)
+	}
+	for got, want := range map[string]string{
+		first:  "goskill add https://github.com/acme/repo/tree/main/skills/first --skill duplicate",
+		second: "goskill add https://github.com/acme/repo/tree/main/skills/second --skill duplicate",
+	} {
+		if got != want {
+			t.Fatalf("command = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestFindInstallCommandScopesMergedGitHubTreeAndBlobResults(t *testing.T) {
+	merged := search.Deduplicate([]search.SearchResult{
+		{
+			Provider:        "github",
+			Name:            "demo",
+			CanonicalSource: "https://github.com/acme/repo/tree/release/skills/demo",
+		},
+		{
+			Provider:        "skills.sh",
+			Name:            "demo",
+			CanonicalSource: "https://github.com/acme/repo/blob/release/skills/demo/SKILL.md",
+		},
+	})
+	if len(merged) != 1 {
+		t.Fatalf("merged results = %#v", merged)
+	}
+	got := findInstallCommand(merged[0])
+	want := "goskill add https://github.com/acme/repo/tree/release/skills/demo --skill demo"
+	if got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestFindInstallCommandScopesMergedRootGitHubTreeAndBlobResults(t *testing.T) {
+	merged := search.Deduplicate([]search.SearchResult{
+		{
+			Provider:        "github",
+			Name:            "demo",
+			CanonicalSource: "https://github.com/acme/repo/tree/release",
+			SkillPath:       "SKILL.md",
+		},
+		{
+			Provider:        "skills.sh",
+			Name:            "demo",
+			CanonicalSource: "https://github.com/acme/repo/blob/release/SKILL.md",
+		},
+	})
+	if len(merged) != 1 {
+		t.Fatalf("merged results = %#v", merged)
+	}
+	got := findInstallCommand(merged[0])
+	want := "goskill add https://github.com/acme/repo/tree/release --skill demo"
+	if got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestFindInstallCommandUsesCatalogPathInsteadOfDisplayNameSelector(t *testing.T) {
+	got := findInstallCommand(search.SearchResult{
+		Name:            "Product Design Toolkit",
+		Provider:        "truefoundry",
+		CanonicalSource: "owner/repo",
+		SkillPath:       "skills/actual-skill/SKILL.md",
+	})
+	want := "goskill add owner/repo/skills/actual-skill"
+	if got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestPrivateConfiguredWellKnownFindAndAddUsesCredentialReference(t *testing.T) {
+	const token = "private-test-token"
+	var artifactRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rich":
+			w.WriteHeader(http.StatusNotFound)
+		case "/legacy":
+			_, _ = w.Write([]byte(`{"skills":[]}`))
+		case "/private/.well-known/agent-skills/index.json":
+			if r.Header.Get("Authorization") != "Bearer "+token {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"skills":[{"name":"private-skill","description":"Private fixture","type":"skill-md","url":"artifacts/private/SKILL.md"}]}`))
+		case "/private/.well-known/agent-skills/artifacts/private/SKILL.md":
+			artifactRequests++
+			if r.Header.Get("Authorization") != "Bearer "+token {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte("---\nname: private-skill\ndescription: Private fixture\n---\n"))
+		default:
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("SKILLS_RICH_SEARCH_URL", server.URL+"/rich")
+	t.Setenv("SKILLS_SEARCH_URL", server.URL+"/legacy")
+	t.Setenv("GOSKILL_DISABLE_SKILLMD", "1")
+	t.Setenv("GOSKILL_DISABLE_TRUEFOUNDRY_CATALOG", "1")
+	t.Setenv("ACME_PRIVATE_TOKEN", token)
+	t.Setenv("GOSKILL_PROVIDER_CONFIG_JSON", `{"providers":[{"name":"acme","kind":"well-known","endpoint":"`+server.URL+`/private","visibility":"private","auth_required":true,"credential_env":"ACME_PRIVATE_TOKEN"}]}`)
+
+	project := t.TempDir()
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Cwd: project}
+	if err := app.Find([]string{"private"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.Contains(got, "goskill add wellknown:acme@private-skill") || strings.Contains(got, token) {
+		t.Fatalf("find output = %s", got)
+	}
+	if err := app.Add([]string{"wellknown:acme@private-skill"}, AddOptions{Yes: true, Agent: []string{"codex"}}); err != nil {
+		t.Fatal(err)
+	}
+	if artifactRequests != 1 {
+		t.Fatalf("artifact requests = %d", artifactRequests)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "private-skill", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPrivateConfiguredWellKnownV1FindAndAddMaterializesFiles(t *testing.T) {
+	const token = "private-v1-test-token"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token && strings.HasPrefix(r.URL.Path, "/private/") {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch r.URL.Path {
+		case "/rich":
+			w.WriteHeader(http.StatusNotFound)
+		case "/legacy":
+			_, _ = w.Write([]byte(`{"skills":[]}`))
+		case "/private/.well-known/agent-skills/index.json":
+			w.WriteHeader(http.StatusNotFound)
+		case "/private/.well-known/skills/index.json":
+			_, _ = w.Write([]byte(`{"skills":[{"name":"private-v1","description":"Private v1 fixture","files":["SKILL.md","references/guide.md"]}]}`))
+		case "/private/.well-known/skills/private-v1/SKILL.md":
+			_, _ = w.Write([]byte("---\nname: private-v1\ndescription: Private v1 fixture\n---\n"))
+		case "/private/.well-known/skills/private-v1/references/guide.md":
+			_, _ = w.Write([]byte("Private supporting file\n"))
+		default:
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	t.Setenv("SKILLS_RICH_SEARCH_URL", server.URL+"/rich")
+	t.Setenv("SKILLS_SEARCH_URL", server.URL+"/legacy")
+	t.Setenv("GOSKILL_DISABLE_SKILLMD", "1")
+	t.Setenv("GOSKILL_DISABLE_TRUEFOUNDRY_CATALOG", "1")
+	t.Setenv("ACME_PRIVATE_V1_TOKEN", token)
+	t.Setenv("GOSKILL_PROVIDER_CONFIG_JSON", `{"providers":[{"name":"acme-v1","kind":"well-known","endpoint":"`+server.URL+`/private","visibility":"private","auth_required":true,"credential_env":"ACME_PRIVATE_V1_TOKEN"}]}`)
+
+	project := t.TempDir()
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Cwd: project}
+	if err := app.Find([]string{"private"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.Contains(got, "goskill add wellknown:acme-v1@private-v1") || strings.Contains(got, token) {
+		t.Fatalf("find output = %s", got)
+	}
+	if err := app.Add([]string{"wellknown:acme-v1@private-v1"}, AddOptions{Yes: true, Agent: []string{"codex"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "private-v1", "references", "guide.md")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFindInstallCommandPreservesWellKnownEndpointBasePath(t *testing.T) {
+	got := findInstallCommand(search.SearchResult{
+		Name:            "legacy",
+		CanonicalSource: "https://skills.example/tenant",
+		InstallURL:      "https://skills.example/tenant",
+	})
+	want := "goskill add https://skills.example/tenant --skill legacy"
+	if got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestFindInstallCommandKeepsSelectorForRootGitHubSkill(t *testing.T) {
+	got := findInstallCommand(search.SearchResult{
+		Name:            "root-skill",
+		CanonicalSource: "owner/repo",
+		SkillPath:       "SKILL.md",
+	})
+	want := "goskill add owner/repo --skill root-skill"
+	if got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
+func TestAddInstallsDirectSkillURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/raw" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		_, _ = w.Write([]byte("---\nname: remote-demo\ndescription: A directly fetched skill\n---\n"))
+	}))
+	defer server.Close()
+
+	project := t.TempDir()
+	app := App{Version: "test", Stdout: &bytes.Buffer{}, Cwd: project}
+	if err := app.Add([]string{server.URL + "/raw"}, AddOptions{Yes: true, Agent: []string{"codex"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "remote-demo", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFindCanDisableSkillMDProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rich":
+			w.WriteHeader(http.StatusNotFound)
+		case "/legacy":
+			_, _ = w.Write([]byte(`{"skills":[{"name":"legacy","source":"owner/repo"}]}`))
+		default:
+			t.Fatalf("unexpected request: %s", r.URL.String())
+		}
+	}))
+	defer server.Close()
+	t.Setenv("SKILLS_RICH_SEARCH_URL", server.URL+"/rich")
+	t.Setenv("SKILLS_SEARCH_URL", server.URL+"/legacy")
+	t.Setenv("GOSKILL_DISABLE_SKILLMD", "1")
+	t.Setenv("GOSKILL_DISABLE_TRUEFOUNDRY_CATALOG", "1")
+
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Cwd: t.TempDir()}
+	if err := app.Find([]string{"legacy"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "legacy") {
+		t.Fatalf("find output = %s", out.String())
+	}
+}
+
+func TestFindDeepOptInAddsGitHubDiscoveryOnlyWhenRequested(t *testing.T) {
+	var githubCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rich":
+			w.WriteHeader(http.StatusNotFound)
+		case "/legacy":
+			_, _ = w.Write([]byte(`{"skills":[]}`))
+		case "/api/search/code":
+			githubCalls++
+			_, _ = w.Write([]byte(`{"items":[{"path":"skills/deep/SKILL.md","repository":{"full_name":"owner/repo","name":"repo","default_branch":"main","owner":{"login":"owner"}}}]}`))
+		case "/raw/owner/repo/main/skills/deep/SKILL.md":
+			_, _ = w.Write([]byte("---\nname: deep-skill\ndescription: Found by GitHub deep search\n---\n"))
+		default:
+			t.Fatalf("unexpected request: %s", r.URL.String())
+		}
+	}))
+	defer server.Close()
+	t.Setenv("SKILLS_RICH_SEARCH_URL", server.URL+"/rich")
+	t.Setenv("SKILLS_SEARCH_URL", server.URL+"/legacy")
+	t.Setenv("GOSKILL_DISABLE_SKILLMD", "1")
+	t.Setenv("GOSKILL_DISABLE_TRUEFOUNDRY_CATALOG", "1")
+	t.Setenv("GITHUB_API_URL", server.URL+"/api")
+	t.Setenv("RAW_GITHUB_URL", server.URL+"/raw")
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+
+	var regularOut bytes.Buffer
+	app := App{Version: "test", Stdout: &regularOut, Cwd: t.TempDir()}
+	if err := app.Find([]string{"deep"}); err != nil {
+		t.Fatal(err)
+	}
+	if githubCalls != 0 || strings.Contains(regularOut.String(), "deep-skill") {
+		t.Fatalf("normal find should not query GitHub: calls=%d output=%s", githubCalls, regularOut.String())
+	}
+
+	var deepOut bytes.Buffer
+	app.Stdout = &deepOut
+	if err := app.Find([]string{"--deep", "deep"}); err != nil {
+		t.Fatal(err)
+	}
+	if githubCalls != 1 || !strings.Contains(deepOut.String(), "deep-skill") || !strings.Contains(deepOut.String(), "[GitHub]") {
+		t.Fatalf("deep find = calls %d, output=%s", githubCalls, deepOut.String())
+	}
+}
+
+func TestFindUsesCachedTrueFoundryCatalogAndRefreshesOnRequest(t *testing.T) {
+	var catalogCalls int
+	catalogUnavailable := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rich":
+			w.WriteHeader(http.StatusNotFound)
+		case "/legacy":
+			_, _ = w.Write([]byte(`{"skills":[]}`))
+		case "/catalog":
+			catalogCalls++
+			if catalogUnavailable {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			name := "Cached catalog skill"
+			if catalogCalls > 1 {
+				name = "Refreshed catalog skill"
+			}
+			_, _ = w.Write([]byte(`[{"id":"catalog-skill","display_name":"` + name + `","description":"Searchable static catalog","authors":["Alice"],"tags":["catalog"],"category":"coding","source":{"repo":"owner/repo","path":"skills/catalog/SKILL.md"},"metadata":{"stars":8}}]`))
+		default:
+			t.Fatalf("unexpected request: %s", r.URL.String())
+		}
+	}))
+	defer server.Close()
+	t.Setenv("SKILLS_RICH_SEARCH_URL", server.URL+"/rich")
+	t.Setenv("SKILLS_SEARCH_URL", server.URL+"/legacy")
+	t.Setenv("GOSKILL_DISABLE_SKILLMD", "1")
+	t.Setenv("TRUEFOUNDRY_CATALOG_URL", server.URL+"/catalog")
+	t.Setenv("GOSKILL_CATALOG_CACHE_DIR", t.TempDir())
+	t.Setenv("GOSKILL_CATALOG_TTL", "24h")
+
+	var out, errOut bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &errOut, Cwd: t.TempDir()}
+	if err := app.Find([]string{"catalog"}); err != nil {
+		t.Fatal(err)
+	}
+	if catalogCalls != 1 || !strings.Contains(out.String(), "Cached catalog skill") || !strings.Contains(out.String(), "[TrueFoundry]") {
+		t.Fatalf("catalog find = calls %d, output=%s", catalogCalls, out.String())
+	}
+	out.Reset()
+	errOut.Reset()
+	if err := app.Find([]string{"--refresh", "catalog"}); err != nil {
+		t.Fatal(err)
+	}
+	if catalogCalls != 2 || !strings.Contains(out.String(), "Refreshed catalog skill") || !strings.Contains(errOut.String(), "Catalog refreshed") {
+		t.Fatalf("catalog refresh = calls %d, output=%s, stderr=%s", catalogCalls, out.String(), errOut.String())
+	}
+	out.Reset()
+	errOut.Reset()
+	catalogUnavailable = true
+	if err := app.Find([]string{"--refresh", "catalog"}); err != nil {
+		t.Fatal(err)
+	}
+	if catalogCalls != 3 || !strings.Contains(out.String(), "Refreshed catalog skill") || !strings.Contains(errOut.String(), "Using the cached TrueFoundry catalog") {
+		t.Fatalf("catalog offline fallback = calls %d, output=%s, stderr=%s", catalogCalls, out.String(), errOut.String())
 	}
 }
 

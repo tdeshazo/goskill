@@ -34,3 +34,26 @@ func TestRejectUnsafeSubpath(t *testing.T) {
 		t.Fatal("expected unsafe subpath error")
 	}
 }
+
+func TestParseRecognizesDirectSkillURL(t *testing.T) {
+	parsed, err := Parse("https://api.skillmd.com/api/skills/owner/demo/raw")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Type != SkillURL {
+		t.Fatalf("type = %q", parsed.Type)
+	}
+}
+
+func TestParseConfiguredWellKnownSource(t *testing.T) {
+	parsed, err := Parse("wellknown:acme@private-skill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Type != ConfiguredWellKnown || parsed.URL != "acme" || parsed.SkillFilter != "private-skill" {
+		t.Fatalf("parsed = %#v", parsed)
+	}
+	if _, err := Parse("wellknown:acme"); err == nil {
+		t.Fatal("source without a skill was accepted")
+	}
+}

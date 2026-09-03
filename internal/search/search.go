@@ -20,6 +20,28 @@ type SearchQuery struct {
 	Limit int
 }
 
+// SortMode selects the primary ordering applied after providers have returned
+// their normalized results. Providers deliberately do not receive this value:
+// they remain responsible only for retrieval and normalization.
+type SortMode string
+
+const (
+	SortRelevance SortMode = "relevance"
+	SortPopular   SortMode = "popular"
+	SortNewest    SortMode = "newest"
+)
+
+// Valid reports whether the sort mode is supported by the provider-neutral
+// ranking layer.
+func (m SortMode) Valid() bool {
+	switch m {
+	case SortRelevance, SortPopular, SortNewest:
+		return true
+	default:
+		return false
+	}
+}
+
 // Normalized returns a query with normalized whitespace and a non-negative limit.
 func (q SearchQuery) Normalized() SearchQuery {
 	q.Text = strings.Join(strings.Fields(q.Text), " ")
@@ -31,20 +53,53 @@ func (q SearchQuery) Normalized() SearchQuery {
 
 // SearchResult is a provider-neutral skill search result.
 type SearchResult struct {
-	Name               string
-	Description        string
-	Provider           string
-	CanonicalSource    string
-	InstallURL         string
-	Author             string
-	Repository         string
-	Stars              int
-	Installs           int
-	Rating             float64
-	VerificationStatus string
-	AuditStatus        string
-	UpdatedAt          time.Time
-	ProviderMetadata   map[string]any
+	ID                 string               `json:"id,omitempty"`
+	Name               string               `json:"name"`
+	Description        string               `json:"description,omitempty"`
+	Provider           string               `json:"provider,omitempty"`
+	CanonicalSource    string               `json:"canonical_source,omitempty"`
+	InstallURL         string               `json:"install_url,omitempty"`
+	Author             string               `json:"author,omitempty"`
+	Authors            []string             `json:"authors,omitempty"`
+	Repository         string               `json:"repository,omitempty"`
+	SkillPath          string               `json:"skill_path,omitempty"`
+	Tags               []string             `json:"tags,omitempty"`
+	Category           string               `json:"category,omitempty"`
+	Version            string               `json:"version,omitempty"`
+	Stars              int                  `json:"stars,omitempty"`
+	Installs           int                  `json:"installs,omitempty"`
+	Rating             float64              `json:"rating,omitempty"`
+	VerificationStatus string               `json:"verification_status,omitempty"`
+	AuditStatus        string               `json:"audit_status,omitempty"`
+	UpdatedAt          time.Time            `json:"updated_at,omitzero"`
+	ProviderMetadata   map[string]any       `json:"provider_metadata,omitempty"`
+	Providers          []string             `json:"providers,omitempty"`
+	Provenance         []ProviderProvenance `json:"provenance,omitempty"`
+}
+
+// ProviderProvenance retains a provider's original normalized record after
+// equivalent cross-provider search results have been merged.
+type ProviderProvenance struct {
+	Provider           string         `json:"provider"`
+	ID                 string         `json:"id,omitempty"`
+	Name               string         `json:"name"`
+	Description        string         `json:"description,omitempty"`
+	CanonicalSource    string         `json:"canonical_source,omitempty"`
+	InstallURL         string         `json:"install_url,omitempty"`
+	Author             string         `json:"author,omitempty"`
+	Authors            []string       `json:"authors,omitempty"`
+	Repository         string         `json:"repository,omitempty"`
+	SkillPath          string         `json:"skill_path,omitempty"`
+	Tags               []string       `json:"tags,omitempty"`
+	Category           string         `json:"category,omitempty"`
+	Version            string         `json:"version,omitempty"`
+	Stars              int            `json:"stars,omitempty"`
+	Installs           int            `json:"installs,omitempty"`
+	Rating             float64        `json:"rating,omitempty"`
+	VerificationStatus string         `json:"verification_status,omitempty"`
+	AuditStatus        string         `json:"audit_status,omitempty"`
+	UpdatedAt          time.Time      `json:"updated_at,omitzero"`
+	ProviderMetadata   map[string]any `json:"provider_metadata,omitempty"`
 }
 
 // ProviderStatus records the outcome for one provider search.
@@ -112,6 +167,7 @@ func (a Aggregator) Search(ctx context.Context, query SearchQuery) (SearchRespon
 	for _, results := range resultsByProvider {
 		response.Results = append(response.Results, results...)
 	}
+	response.Results = Deduplicate(response.Results)
 	if err := ctx.Err(); err != nil {
 		return response, err
 	}
