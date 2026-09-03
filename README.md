@@ -228,6 +228,12 @@ formats write only their JSON document to stdout, including when invalid skills
 produce a nonzero exit status. Usage and source-resolution failures remain
 ordinary command errors and do not emit a partial machine report.
 
+Validation diagnostics use 1-based source locations. JSON includes the active
+profile's rule catalog with profile and provenance metadata; SARIF carries the
+same catalog as driver rules, and text output shows each finding's location and
+rule provenance. See the [conformance contract](docs/conformance.md) for the
+fallback-location convention.
+
 Validation profiles make the policy explicit:
 
 | Profile | Rules | Exit behavior |

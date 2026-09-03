@@ -145,6 +145,18 @@ func TestValidateJSONOutputIsCompleteAndMachineSafe(t *testing.T) {
 	if report.Specification.Revision != skills.SpecRevision || len(report.Diagnostics) == 0 || report.Diagnostics[0].Code != skills.RuleNameLowercase {
 		t.Fatalf("report = %#v", report)
 	}
+	if len(report.Rules) != len(skills.RulesForProfile(skills.ProfileSpec)) {
+		t.Fatalf("rule catalog = %#v", report.Rules)
+	}
+	foundRule := false
+	for _, rule := range report.Rules {
+		if rule.Code == skills.RuleNameLowercase {
+			foundRule = rule.Profile == skills.ProfileSpec && rule.Source == skills.SpecSourceURL
+		}
+	}
+	if !foundRule {
+		t.Fatalf("rule metadata = %#v", report.Rules)
+	}
 }
 
 func TestValidateJSONValidResult(t *testing.T) {
@@ -165,6 +177,94 @@ func TestValidateJSONValidResult(t *testing.T) {
 	if report.Diagnostics == nil || len(report.Files) != 1 || report.Files[0].Diagnostics == nil {
 		t.Fatalf("valid diagnostics must serialize as arrays: %s", out.String())
 	}
+}
+
+func TestValidateTextIncludesLocationAndRuleMetadata(t *testing.T) {
+	root := t.TempDir()
+	dir := makeSkill(t, root, "bad-skill", "Description")
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: Bad Skill\ndescription: Description\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: root}
+	err := app.Run([]string{"validate", "bad-skill"})
+	if err == nil || !strings.Contains(err.Error(), "validation failed") {
+		t.Fatalf("text validation error = %v", err)
+	}
+	want := "[" + skills.RuleNameLowercase + "] 2:7 name must be lowercase (spec; " + skills.SpecSourceURL + ")"
+	if !strings.Contains(terminal.StripEscapes(out.String()), want) {
+		t.Fatalf("text output missing location or metadata %q:\n%s", want, out.String())
+	}
+}
+
+func TestValidateTextSupportsRationaleOnlyRuleMetadata(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "skill.md"), []byte("---\nname: demo\ndescription: Description\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: root}
+	err := app.Run([]string{"validate", "--profile=portable", "demo"})
+	if err == nil || !strings.Contains(err.Error(), "validation failed") {
+		t.Fatalf("text validation error = %v", err)
+	}
+	want := "(portable; case-sensitive clients require the exact uppercase filename)"
+	if rendered := terminal.StripEscapes(out.String()); !strings.Contains(rendered, want) || strings.Contains(rendered, "vercel-labs/skills/issues/1282") {
+		t.Fatalf("text output does not cleanly render rationale-only metadata %q:\n%s", want, rendered)
+	}
+}
+
+func TestValidateDuplicateFrontmatterKeyLocations(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: demo\nname: duplicate\ndescription: Description\n---\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("JSON", func(t *testing.T) {
+		var out bytes.Buffer
+		app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: root}
+		err := app.Run([]string{"validate", "--json", "demo"})
+		if code, ok := ExitCode(err); !ok || code != 1 {
+			t.Fatalf("ExitCode(%v) = %d, %v", err, code, ok)
+		}
+		var report validationReport
+		if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+			t.Fatal(err)
+		}
+		if len(report.Diagnostics) != 1 || report.Diagnostics[0].Code != skills.RuleFrontmatterYAML || report.Diagnostics[0].Line != 3 || report.Diagnostics[0].Column != 1 {
+			t.Fatalf("JSON diagnostics = %#v", report.Diagnostics)
+		}
+	})
+
+	t.Run("SARIF", func(t *testing.T) {
+		var out bytes.Buffer
+		app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: root}
+		err := app.Run([]string{"validate", "--sarif", "demo"})
+		if code, ok := ExitCode(err); !ok || code != 1 {
+			t.Fatalf("ExitCode(%v) = %d, %v", err, code, ok)
+		}
+		var log sarifLog
+		if err := json.Unmarshal(out.Bytes(), &log); err != nil {
+			t.Fatal(err)
+		}
+		results := log.Runs[0].Results
+		if len(results) != 1 || results[0].RuleID != skills.RuleFrontmatterYAML || results[0].Properties.Line != 3 || results[0].Properties.Column != 1 {
+			t.Fatalf("SARIF results = %#v", results)
+		}
+		physical := results[0].Locations[0].PhysicalLocation
+		if physical.Region == nil || physical.Region.StartLine != 3 || physical.Region.StartColumn != 1 {
+			t.Fatalf("SARIF physical location = %#v", physical)
+		}
+	})
 }
 
 func TestValidateProfilesPreserveExitAndTextBehavior(t *testing.T) {
@@ -256,9 +356,9 @@ func TestValidatePortableSARIFReportsLowercaseFilename(t *testing.T) {
 	for _, rule := range run.Tool.Driver.Rules {
 		switch rule.ID {
 		case skills.RuleSkillLineCount:
-			foundGuidance = rule.DefaultConfiguration.Level == "warning"
+			foundGuidance = rule.DefaultConfiguration.Level == "warning" && rule.HelpURI != "" && rule.Properties.Profile == string(skills.ProfileRecommended)
 		case skills.RuleSkillFilename:
-			foundPortable = rule.DefaultConfiguration.Level == "error"
+			foundPortable = rule.DefaultConfiguration.Level == "error" && rule.HelpURI == "" && rule.Properties.Profile == string(skills.ProfilePortable) && rule.Properties.Rationale != ""
 		}
 	}
 	if !foundGuidance || !foundPortable {
@@ -290,6 +390,15 @@ func TestValidatePortableJSONReportsLowercaseFilename(t *testing.T) {
 	}
 	if len(report.Diagnostics) != 1 || report.Diagnostics[0].Code != skills.RuleSkillFilename || filepath.Base(report.Diagnostics[0].Path) != "skill.md" {
 		t.Fatalf("JSON diagnostics = %#v", report.Diagnostics)
+	}
+	foundPortable := false
+	for _, rule := range report.Rules {
+		if rule.Code == skills.RuleSkillFilename {
+			foundPortable = rule.Profile == skills.ProfilePortable && rule.Source == "" && rule.Rationale != ""
+		}
+	}
+	if !foundPortable {
+		t.Fatalf("JSON rule metadata = %#v", report.Rules)
 	}
 }
 
@@ -370,7 +479,8 @@ func TestValidateSARIFContainsRuleCatalogAndArtifactLocations(t *testing.T) {
 		t.Fatalf("SARIF run = %#v", run)
 	}
 	for i, rule := range skills.RulesForProfile(skills.ProfileSpec) {
-		if run.Tool.Driver.Rules[i].ID != rule.Code || run.Tool.Driver.Rules[i].DefaultConfiguration.Level != sarifLevel(rule.Severity) {
+		sarifRule := run.Tool.Driver.Rules[i]
+		if sarifRule.ID != rule.Code || sarifRule.DefaultConfiguration.Level != sarifLevel(rule.Severity) || sarifRule.HelpURI != rule.Source || sarifRule.Properties.Profile != string(rule.Profile) {
 			t.Fatalf("SARIF rules = %#v", run.Tool.Driver.Rules)
 		}
 	}
@@ -378,7 +488,7 @@ func TestValidateSARIFContainsRuleCatalogAndArtifactLocations(t *testing.T) {
 		t.Fatalf("SARIF results = %#v", run.Results)
 	}
 	physical := run.Results[0].Locations[0].PhysicalLocation
-	if physical.ArtifactLocation.URI == "" || physical.Region != nil {
+	if physical.ArtifactLocation.URI == "" || physical.Region == nil || physical.Region.StartLine != 2 || physical.Region.StartColumn != 7 {
 		t.Fatalf("SARIF physical location = %#v", physical)
 	}
 	if len(run.Artifacts) != 1 || !strings.HasPrefix(run.Artifacts[0].Location.URI, "file://") {

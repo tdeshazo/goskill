@@ -62,7 +62,8 @@ func (p Profile) Valid() bool {
 }
 
 // Diagnostic is a structured Agent Skills conformance finding. Line and
-// Column are zero until source locations are available.
+// Column are always 1-based; file-level findings use the deterministic 1:1
+// fallback location.
 type Diagnostic struct {
 	Code     string   `json:"code"`
 	Severity Severity `json:"severity"`
@@ -75,9 +76,12 @@ type Diagnostic struct {
 // Rule describes one stable Agent Skills conformance rule. Codes are explicit
 // rather than derived so automation can depend on them across releases.
 type Rule struct {
-	Code     string
-	Summary  string
-	Severity Severity
+	Code      string   `json:"code"`
+	Summary   string   `json:"summary"`
+	Severity  Severity `json:"severity"`
+	Profile   Profile  `json:"profile"`
+	Source    string   `json:"source,omitempty"`
+	Rationale string   `json:"rationale,omitempty"`
 }
 
 const (
@@ -106,34 +110,34 @@ const (
 )
 
 var specRuleCatalog = []Rule{
-	{Code: RuleSkillMDRequired, Summary: "SKILL.md is required and readable", Severity: SeverityError},
-	{Code: RuleFrontmatterRequired, Summary: "YAML frontmatter is required", Severity: SeverityError},
-	{Code: RuleFrontmatterYAML, Summary: "frontmatter must be valid YAML mapping", Severity: SeverityError},
-	{Code: RuleTopLevelFields, Summary: "only specified frontmatter fields are allowed", Severity: SeverityError},
-	{Code: RuleNameRequired, Summary: "name is required", Severity: SeverityError},
-	{Code: RuleNameType, Summary: "name must be a non-empty string", Severity: SeverityError},
-	{Code: RuleNameLength, Summary: "name must be at most 64 characters", Severity: SeverityError},
-	{Code: RuleNameLowercase, Summary: "name must be lowercase", Severity: SeverityError},
-	{Code: RuleNameHyphenBoundary, Summary: "name cannot start or end with a hyphen", Severity: SeverityError},
-	{Code: RuleNameConsecutiveHyphens, Summary: "name cannot contain consecutive hyphens", Severity: SeverityError},
-	{Code: RuleNameCharacters, Summary: "name may contain only letters, digits, and hyphens", Severity: SeverityError},
-	{Code: RuleNameDirectory, Summary: "name must match its parent directory", Severity: SeverityError},
-	{Code: RuleDescriptionRequired, Summary: "description is required", Severity: SeverityError},
-	{Code: RuleDescriptionType, Summary: "description must be a non-empty string", Severity: SeverityError},
-	{Code: RuleDescriptionLength, Summary: "description must be at most 1024 characters", Severity: SeverityError},
-	{Code: RuleCompatibilityType, Summary: "compatibility must be a string", Severity: SeverityError},
-	{Code: RuleCompatibilityLength, Summary: "compatibility must be between 1 and 500 characters", Severity: SeverityError},
-	{Code: RuleMetadataMapping, Summary: "metadata must be a mapping", Severity: SeverityError},
-	{Code: RuleMetadataValues, Summary: "metadata keys and values must be strings", Severity: SeverityError},
-	{Code: RuleAllowedToolsType, Summary: "allowed-tools must be a string", Severity: SeverityError},
+	{Code: RuleSkillMDRequired, Summary: "SKILL.md is required and readable", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleFrontmatterRequired, Summary: "YAML frontmatter is required", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleFrontmatterYAML, Summary: "frontmatter must be valid YAML mapping", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleTopLevelFields, Summary: "only specified frontmatter fields are allowed", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleNameRequired, Summary: "name is required", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleNameType, Summary: "name must be a non-empty string", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleNameLength, Summary: "name must be at most 64 characters", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleNameLowercase, Summary: "name must be lowercase", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleNameHyphenBoundary, Summary: "name cannot start or end with a hyphen", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleNameConsecutiveHyphens, Summary: "name cannot contain consecutive hyphens", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleNameCharacters, Summary: "name may contain only letters, digits, and hyphens", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleNameDirectory, Summary: "name must match its parent directory", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleDescriptionRequired, Summary: "description is required", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleDescriptionType, Summary: "description must be a non-empty string", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleDescriptionLength, Summary: "description must be at most 1024 characters", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleCompatibilityType, Summary: "compatibility must be a string", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleCompatibilityLength, Summary: "compatibility must be between 1 and 500 characters", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleMetadataMapping, Summary: "metadata must be a mapping", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleMetadataValues, Summary: "metadata keys and values must be strings", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
+	{Code: RuleAllowedToolsType, Summary: "allowed-tools must be a string", Severity: SeverityError, Profile: ProfileSpec, Source: SpecSourceURL},
 }
 
 var recommendedRuleCatalog = []Rule{
-	{Code: RuleSkillLineCount, Summary: "SKILL.md should be 500 lines or fewer", Severity: SeverityWarning},
+	{Code: RuleSkillLineCount, Summary: "SKILL.md should be 500 lines or fewer", Severity: SeverityWarning, Profile: ProfileRecommended, Source: "https://agentskills.io/skill-creation/best-practices"},
 }
 
 var portableRuleCatalog = []Rule{
-	{Code: RuleSkillFilename, Summary: "portable skills require the exact uppercase filename SKILL.md", Severity: SeverityError},
+	{Code: RuleSkillFilename, Summary: "portable skills require the exact uppercase filename SKILL.md", Severity: SeverityError, Profile: ProfilePortable, Rationale: "case-sensitive clients require the exact uppercase filename"},
 }
 
 // Rules returns the complete, stable Agent Skills rule catalog.
@@ -154,6 +158,16 @@ func RulesForProfile(profile Profile) []Rule {
 		rules = append(rules, portableRuleCatalog...)
 	}
 	return rules
+}
+
+// RuleForCode returns stable metadata for code when it is part of the catalog.
+func RuleForCode(code string) (Rule, bool) {
+	for _, rule := range Rules() {
+		if rule.Code == code {
+			return rule, true
+		}
+	}
+	return Rule{}, false
 }
 
 var allowedFrontmatterFields = map[string]bool{

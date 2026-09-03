@@ -23,6 +23,7 @@ type validationReport struct {
 	Valid         bool                    `json:"valid"`
 	Summary       validationReportSummary `json:"summary"`
 	Specification validationSpecification `json:"specification"`
+	Rules         []skills.Rule           `json:"rules"`
 	Files         []validationFileReport  `json:"files"`
 	Diagnostics   []skills.Diagnostic     `json:"diagnostics"`
 }
@@ -83,6 +84,7 @@ func newValidationReport(results []validationResult, counts validationCounts, pr
 			CanonicalURL:     skills.SpecCanonicalURL,
 			PinnedSourceURL:  skills.SpecSourceURL,
 		},
+		Rules:       skills.RulesForProfile(profile),
 		Files:       make([]validationFileReport, 0, len(orderedResults)),
 		Diagnostics: make([]skills.Diagnostic, 0, counts.Diagnostics),
 	}
@@ -165,6 +167,13 @@ type sarifRule struct {
 	Name                 string                    `json:"name"`
 	ShortDescription     sarifMessage              `json:"shortDescription"`
 	DefaultConfiguration sarifDefaultConfiguration `json:"defaultConfiguration"`
+	HelpURI              string                    `json:"helpUri,omitempty"`
+	Properties           sarifRuleProperties       `json:"properties"`
+}
+
+type sarifRuleProperties struct {
+	Profile   string `json:"goskill_profile"`
+	Rationale string `json:"goskill_rationale,omitempty"`
 }
 
 type sarifDefaultConfiguration struct {
@@ -214,6 +223,11 @@ func renderValidationSARIF(report validationReport) (string, error) {
 			Name:                 rule.Code,
 			ShortDescription:     sarifMessage{Text: rule.Summary},
 			DefaultConfiguration: sarifDefaultConfiguration{Level: sarifLevel(rule.Severity)},
+			HelpURI:              rule.Source,
+			Properties: sarifRuleProperties{
+				Profile:   string(rule.Profile),
+				Rationale: rule.Rationale,
+			},
 		})
 	}
 

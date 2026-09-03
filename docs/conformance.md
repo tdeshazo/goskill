@@ -14,7 +14,11 @@ prints only the SHA for scripts.
 The command validates a skill directory's `SKILL.md` (or the reference
 implementation-compatible lowercase `skill.md`) and emits deterministic,
 structured diagnostics. Diagnostics are ordered by path, line, column, and
-rule code; line and column are currently zero.
+rule code. Lines and columns are 1-based. Field findings point at the matching
+YAML value; unexpected top-level fields point at their key. Missing fields,
+missing/unreadable files, filename checks, line-count guidance, and malformed
+YAML without a usable node use the deterministic `1:1` file fallback (a YAML
+parser-reported malformed line uses column `1`).
 
 For the default `spec` profile, goskill makes this bounded contract: Given the Agent Skills specification revision embedded in this binary, this directory conforms to every normative rule we implement from that specification. This does not claim that goskill implements every possible upstream rule, and it does not imply a numbered upstream specification version.
 
@@ -71,12 +75,16 @@ goskill validate --profile portable --sarif ./my-skill > portability.sarif
 either order with `--format`. `--format` accepts `text`, `json`, or `sarif`; it
 cannot be combined with the `--json` or `--sarif` aliases. JSON reports use
 schema version `1` and include the active profile, validity, error and warning
-counts, pinned specification metadata, files, and the complete sorted
-diagnostic list. SARIF output is SARIF 2.1.0, publishes the active profile's
-rule catalog with error/warning levels, includes the active profile, summary
-counts and pinned specification metadata in `goskill_*` properties, and
-reports artifact URIs. Every diagnostic with a known path has a physical
-artifact location; its source region is omitted until line information exists.
+counts, pinned specification metadata, the active profile's complete `rules`
+catalog, files, and the complete sorted diagnostic list. Each catalog rule has
+its stable code, summary, severity, enabling profile, and an authoritative
+source and/or rationale. SARIF output is SARIF 2.1.0, publishes the same
+catalog as driver rules, uses the source as `helpUri` when one exists, and
+exposes profile/rationale in `goskill_*` rule properties. Text output adds the
+diagnostic location and rule profile plus the available source or rationale
+after its stable bracketed code.
+Every diagnostic with a known path has a physical SARIF artifact location and
+a source region.
 
 Both machine formats are deterministic and ANSI-free. A conformance failure
 still exits nonzero, but its complete JSON/SARIF document is the only stdout
@@ -96,8 +104,9 @@ Strict validation checks only normative format requirements:
 - `metadata` as a string-to-string mapping; and
 - `allowed-tools` as a string.
 
-The stable rule catalog is exposed in `internal/skills/rules.go`. Scripts that
-consume command output should use the bracketed rule code, not diagnostic text.
+The stable rule catalog is exposed through `skills.Rules` and
+`skills.RulesForProfile`. Scripts that consume command output should use the
+bracketed rule code, not diagnostic text.
 
 ## What profiles do not guarantee
 

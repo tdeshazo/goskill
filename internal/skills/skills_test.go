@@ -115,12 +115,81 @@ func TestRulesHaveUniqueStableCodes(t *testing.T) {
 		if !(strings.HasPrefix(rule.Code, "AS") || strings.HasPrefix(rule.Code, "GS") || strings.HasPrefix(rule.Code, "GP")) || seen[rule.Code] {
 			t.Fatalf("invalid or duplicate rule %#v", rule)
 		}
+		if !rule.Profile.Valid() || (rule.Source == "" && rule.Rationale == "") {
+			t.Fatalf("rule metadata = %#v", rule)
+		}
 		seen[rule.Code] = true
 		codes = append(codes, rule.Code)
 	}
 	sort.Strings(codes)
 	if len(codes) != len(rules) {
 		t.Fatalf("codes = %#v", codes)
+	}
+}
+
+func TestValidationLocationsUseYAMLNodesAndFileFallback(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "skill")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "SKILL.md")
+	content := "---\n" +
+		"name: Bad Skill\n" +
+		"description: 42\n" +
+		"compatibility: \"\"\n" +
+		"metadata:\n" +
+		"  version: 1\n" +
+		"allowed-tools: [read]\n" +
+		"unknown: value\n" +
+		"---\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	locations := map[string]sourceLocation{}
+	for _, diagnostic := range ValidateSkillMD(path) {
+		locations[diagnostic.Code] = sourceLocation{Line: diagnostic.Line, Column: diagnostic.Column}
+	}
+	want := map[string]sourceLocation{
+		RuleNameLowercase:       {Line: 2, Column: 7},
+		RuleNameDirectory:       {Line: 2, Column: 7},
+		RuleDescriptionType:     {Line: 3, Column: 14},
+		RuleCompatibilityLength: {Line: 4, Column: 16},
+		RuleMetadataValues:      {Line: 6, Column: 12},
+		RuleAllowedToolsType:    {Line: 7, Column: 16},
+		RuleTopLevelFields:      {Line: 8, Column: 1},
+	}
+	for code, wantLocation := range want {
+		if got := locations[code]; got != wantLocation {
+			t.Errorf("%s location = %#v, want %#v", code, got, wantLocation)
+		}
+	}
+
+	missing := ValidateSkillMD(filepath.Join(dir, "missing.md"))
+	if len(missing) != 1 || missing[0].Line != 1 || missing[0].Column != 1 {
+		t.Fatalf("missing file location = %#v", missing)
+	}
+	if err := os.WriteFile(path, []byte("---\ndescription: Description\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	missingField := ValidateSkillMD(path)
+	if len(missingField) != 1 || missingField[0].Code != RuleNameRequired || missingField[0].Line != 1 || missingField[0].Column != 1 {
+		t.Fatalf("missing field location = %#v", missingField)
+	}
+	if err := os.WriteFile(path, []byte("---\nname: [unterminated\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	invalid := ValidateSkillMD(path)
+	if len(invalid) != 1 || invalid[0].Code != RuleFrontmatterYAML || invalid[0].Line != 2 || invalid[0].Column != 1 {
+		t.Fatalf("invalid YAML location = %#v", invalid)
+	}
+	if err := os.WriteFile(path, []byte("---\nname: skill\nname: duplicate\ndescription: Description\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	duplicate := ValidateSkillMD(path)
+	if len(duplicate) != 1 || duplicate[0].Code != RuleFrontmatterYAML || duplicate[0].Line != 3 || duplicate[0].Column != 1 {
+		t.Fatalf("duplicate key location = %#v", duplicate)
 	}
 }
 
@@ -303,13 +372,14 @@ func TestValidationSkillFileFallsBackWhenDirectoryCannotBeListed(t *testing.T) {
 
 func TestSortDiagnostics(t *testing.T) {
 	diagnostics := []Diagnostic{
-		{Path: "b", Code: RuleDescriptionType},
-		{Path: "a", Code: RuleNameType},
-		{Path: "a", Code: RuleDescriptionType},
+		{Path: "b", Line: 1, Column: 1, Code: RuleDescriptionType},
+		{Path: "a", Line: 4, Column: 1, Code: RuleNameType},
+		{Path: "a", Line: 3, Column: 2, Code: RuleDescriptionType},
+		{Path: "a", Line: 3, Column: 1, Code: RuleNameLength},
 	}
 	SortDiagnostics(diagnostics)
-	got := []string{diagnostics[0].Path + diagnostics[0].Code, diagnostics[1].Path + diagnostics[1].Code, diagnostics[2].Path + diagnostics[2].Code}
-	want := []string{"a" + RuleNameType, "a" + RuleDescriptionType, "b" + RuleDescriptionType}
+	got := []string{diagnostics[0].Code, diagnostics[1].Code, diagnostics[2].Code, diagnostics[3].Code}
+	want := []string{RuleNameLength, RuleDescriptionType, RuleNameType, RuleDescriptionType}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("order = %v, want %v", got, want)
 	}

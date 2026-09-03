@@ -32,12 +32,12 @@ Local-reference checks are intentionally absent; if adopted, they belong in
 **Outcome:** every applicable diagnostic has accurate source location data and
 machine consumers can discover the stable rule catalog and its provenance.
 
-- [ ] Record precise line and column locations for frontmatter and file-level
+- [x] Record precise line and column locations for frontmatter and file-level
       findings without losing deterministic diagnostic ordering.
-- [ ] Extend the existing stable rule catalog, which already records code,
+- [x] Extend the existing stable rule catalog, which already records code,
       summary, and severity, with explicit profile and authoritative-source or
       rationale metadata.
-- [ ] Carry the new metadata consistently through discovery interfaces, text,
+- [x] Carry the new metadata consistently through discovery interfaces, text,
       JSON, and SARIF.
 
 This milestone comes first: explanations, machine schemas, and differential

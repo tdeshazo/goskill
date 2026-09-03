@@ -321,7 +321,17 @@ func renderValidationResults(results []validationResult, total int, counts valid
 		}
 		lines = append(lines, fmt.Sprintf("%s %s", selectorWarningStyle.Render("●"), selectorTitleStyle.Render(path)))
 		for _, issue := range result.Issues {
-			lines = append(lines, "  "+selectorWarningStyle.Render(fmt.Sprintf("[%s] %s", issue.Code, issue.Message)))
+			message := fmt.Sprintf("[%s] %d:%d %s", issue.Code, issue.Line, issue.Column, issue.Message)
+			if rule, ok := skills.RuleForCode(issue.Code); ok {
+				metadata := string(rule.Profile)
+				if rule.Source != "" {
+					metadata += "; " + rule.Source
+				} else if rule.Rationale != "" {
+					metadata += "; " + rule.Rationale
+				}
+				message += " (" + metadata + ")"
+			}
+			lines = append(lines, "  "+selectorWarningStyle.Render(message))
 		}
 	}
 	if counts.Errors > 0 {
