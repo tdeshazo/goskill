@@ -175,6 +175,8 @@ goskill find --providers # Show built-in and configured optional registries
 goskill agent list
 goskill spec [--revision]
 goskill validate <skills>
+goskill validate --format json <skills>
+goskill validate --sarif <skills>
 goskill check
 goskill update [skills...]
 goskill init [name]
@@ -206,6 +208,13 @@ by this build. Agent Skills currently has no formal numbered specification
 release, so goskill identifies the contract by its immutable upstream Git
 revision. `goskill spec --revision` prints only that SHA for scripts; neither
 command queries upstream at runtime.
+
+`goskill validate` writes its existing readable text output by default. For
+automation, use `--format json` (or `--json`) for the complete deterministic
+validation report, or `--format sarif` (or `--sarif`) for SARIF 2.1.0. Machine
+formats write only their JSON document to stdout, including when invalid skills
+produce a nonzero exit status. Usage and source-resolution failures remain
+ordinary command errors and do not emit a partial machine report.
 
 ## Find options
 

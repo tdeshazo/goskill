@@ -655,14 +655,16 @@ func catalogTTL() time.Duration {
 }
 
 func (a App) Validate(args []string) error {
-	if len(args) == 0 {
-		return errors.New("usage: skills validate <skills>")
+	opts, err := parseValidate(args)
+	if err != nil {
+		return err
 	}
-	var files []string
-	for _, arg := range args {
-		if strings.TrimSpace(arg) == "" {
-			continue
-		}
+	if opts.Help {
+		a.writeOut(renderValidateHelp())
+		return nil
+	}
+	var files []validationFile
+	for _, arg := range opts.Sources {
 		sourceFiles, cleanup, err := a.validationSkillFiles(arg)
 		if cleanup != nil {
 			defer cleanup()
@@ -672,30 +674,55 @@ func (a App) Validate(args []string) error {
 		}
 		files = append(files, sourceFiles...)
 	}
-	sort.Strings(files)
-	files = uniqueStrings(files)
+	sort.SliceStable(files, func(i, j int) bool {
+		if files[i].ReportPath == files[j].ReportPath {
+			return files[i].Path < files[j].Path
+		}
+		return files[i].ReportPath < files[j].ReportPath
+	})
+	files = uniqueValidationFiles(files)
 	issuesByPath := map[string][]skills.Diagnostic{}
-	for _, path := range files {
-		issuesByPath[path] = append(issuesByPath[path], skills.ValidateSkillMD(path)...)
+	for _, file := range files {
+		issuesByPath[file.Path] = append(issuesByPath[file.Path], skills.ValidateSkillMD(file.Path)...)
 	}
 	var issueCount int
 	var results []validationResult
-	for _, path := range files {
-		issues := issuesByPath[path]
+	for _, file := range files {
+		issues := issuesByPath[file.Path]
 		skills.SortDiagnostics(issues)
-		results = append(results, validationResult{Path: path, Issues: issues})
+		results = append(results, validationResult{Path: file.Path, ReportPath: file.ReportPath, Issues: issues})
 		for range issues {
 			issueCount++
 		}
 	}
-	a.writeOut(renderValidationResults(results, len(files), issueCount, a.Cwd))
+	if opts.Format == validationFormatText {
+		a.writeOut(renderValidationResults(results, len(files), issueCount, a.Cwd))
+	} else {
+		report := newValidationReport(results, issueCount)
+		var output string
+		switch opts.Format {
+		case validationFormatJSON:
+			output, err = renderValidationJSON(report)
+		case validationFormatSARIF:
+			output, err = renderValidationSARIF(report)
+		default:
+			return fmt.Errorf("unsupported validation format %q", opts.Format)
+		}
+		if err != nil {
+			return fmt.Errorf("encode validation output: %w", err)
+		}
+		a.writeOut(output)
+	}
 	if issueCount > 0 {
+		if opts.Format != validationFormatText {
+			return validationMachineOutputError{issues: issueCount}
+		}
 		return fmt.Errorf("validation failed: %d issue(s)", issueCount)
 	}
 	return nil
 }
 
-func (a App) validationSkillFiles(rawSource string) ([]string, func(), error) {
+func (a App) validationSkillFiles(rawSource string) ([]validationFile, func(), error) {
 	candidate := rawSource
 	if !filepath.IsAbs(candidate) {
 		candidate = filepath.Join(a.Cwd, candidate)
@@ -706,7 +733,7 @@ func (a App) validationSkillFiles(rawSource string) ([]string, func(), error) {
 			return nil, nil, err
 		}
 		files, err := validationSkillFilesFromPath(abs, "")
-		return files, nil, err
+		return validationFilesForReport(abs, abs, files), nil, err
 	}
 	parsed, err := source.Parse(rawSource)
 	if err != nil {
@@ -715,14 +742,14 @@ func (a App) validationSkillFiles(rawSource string) ([]string, func(), error) {
 	switch parsed.Type {
 	case source.Local:
 		files, err := validationSkillFilesFromPath(parsed.LocalPath, parsed.Subpath)
-		return files, nil, err
+		return validationFilesForReport(parsed.LocalPath, parsed.LocalPath, files), nil, err
 	case source.GitHub, source.GitLab, source.Git:
 		tmp, cleanup, err := github.Clone(parsed.URL, parsed.Ref)
 		if err != nil {
 			return nil, cleanup, err
 		}
 		files, err := validationSkillFilesFromPath(tmp, parsed.Subpath)
-		return files, cleanup, err
+		return validationFilesForReport(tmp, validationSourceID(parsed), files), cleanup, err
 	default:
 		return nil, nil, fmt.Errorf("validate does not support %s sources", parsed.Type)
 	}
@@ -757,13 +784,13 @@ func validationSkillFilesFromPath(path, subpath string) ([]string, error) {
 	return []string{filepath.Join(searchPath, "SKILL.md")}, nil
 }
 
-func uniqueStrings(list []string) []string {
-	var out []string
+func uniqueValidationFiles(list []validationFile) []validationFile {
+	out := make([]validationFile, 0, len(list))
 	seen := map[string]bool{}
 	for _, item := range list {
-		if !seen[item] {
+		if !seen[item.Path] {
 			out = append(out, item)
-			seen[item] = true
+			seen[item.Path] = true
 		}
 	}
 	return out

@@ -37,12 +37,16 @@ func (e commandExitError) Error() string {
 	return fmt.Sprintf("agent exited with status %d", e.code)
 }
 
+func (e commandExitError) ExitCode() int {
+	return e.code
+}
+
 func ExitCode(err error) (int, bool) {
-	var exitErr commandExitError
+	var exitErr interface{ ExitCode() int }
 	if !errors.As(err, &exitErr) {
 		return 0, false
 	}
-	return exitErr.code, true
+	return exitErr.ExitCode(), true
 }
 
 func (a App) Use(rawSource string, opts UseOptions) error {

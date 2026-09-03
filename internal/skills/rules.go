@@ -24,12 +24,12 @@ const (
 // Diagnostic is a structured Agent Skills conformance finding. Line and
 // Column are zero until source locations are available.
 type Diagnostic struct {
-	Code     string
-	Severity Severity
-	Message  string
-	Path     string
-	Line     int
-	Column   int
+	Code     string   `json:"code"`
+	Severity Severity `json:"severity"`
+	Message  string   `json:"message"`
+	Path     string   `json:"path"`
+	Line     int      `json:"line"`
+	Column   int      `json:"column"`
 }
 
 // Rule describes one stable Agent Skills conformance rule. Codes are explicit

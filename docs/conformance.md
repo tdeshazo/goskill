@@ -17,6 +17,31 @@ structured `ASxxx` diagnostics. Diagnostics are ordered by path, line, column,
 and rule code. P0 diagnostics are all errors; line and column are currently
 zero.
 
+## Machine-readable output
+
+`goskill validate` retains text output by default. Use one of these formats for
+automation:
+
+```bash
+goskill validate --format json ./my-skill
+goskill validate --json ./my-skill
+goskill validate --format sarif ./my-skill > conformance.sarif
+goskill validate --sarif ./my-skill > conformance.sarif
+```
+
+`--format` accepts `text`, `json`, or `sarif`; it cannot be combined with the
+`--json` or `--sarif` aliases. JSON reports use schema version `1` and include
+validity, summary counts, the pinned specification metadata, files, and the
+complete sorted diagnostic list. SARIF output is SARIF 2.1.0, publishes every
+known `ASxxx` rule in the tool driver, includes pinned specification metadata,
+and reports artifact URIs. Every diagnostic with a known path has a physical
+artifact location; its source region is omitted until line information exists.
+
+Both machine formats are deterministic and ANSI-free. A conformance failure
+still exits nonzero, but its complete JSON/SARIF document is the only stdout
+content. Invalid format flags, invalid sources, and other operational failures
+produce normal command errors instead of a partial report.
+
 ## What strict validation guarantees
 
 Strict validation checks only normative format requirements:

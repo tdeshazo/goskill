@@ -1264,7 +1264,7 @@ func TestValidateLocalSkill(t *testing.T) {
 	if !strings.Contains(out.String(), "Validated 1 skill(s): OK") {
 		t.Fatalf("output = %s", out.String())
 	}
-	if err := app.Run([]string{"validate"}); err == nil || !strings.Contains(err.Error(), "usage: skills validate <skills>") {
+	if err := app.Run([]string{"validate"}); err == nil || !strings.Contains(err.Error(), "usage: goskill validate") {
 		t.Fatalf("expected usage error, got %v", err)
 	}
 }

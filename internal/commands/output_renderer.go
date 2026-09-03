@@ -18,8 +18,9 @@ const (
 )
 
 type validationResult struct {
-	Path   string
-	Issues []skills.Diagnostic
+	Path       string
+	ReportPath string
+	Issues     []skills.Diagnostic
 }
 
 func renderStatus(title string, lines []string, kind statusKind) string {
@@ -124,6 +125,15 @@ func renderFindHelp() string {
 		"--sort <mode>          relevance (default), popular, or newest",
 		"--json                 Write normalized ANSI-free JSON",
 		"--providers            List provider capabilities and availability",
+	)
+}
+
+func renderValidateHelp() string {
+	return renderInfo("Validate skills",
+		selectorTitleStyle.Render("goskill validate [options] <skills>"),
+		"--format <format>     text (default), json, or sarif",
+		"--json                Alias for --format json",
+		"--sarif               Alias for --format sarif",
 	)
 }
 
