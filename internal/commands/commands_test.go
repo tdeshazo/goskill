@@ -10,6 +10,7 @@ import (
 
 	"github.com/tdeshazo/goskill/internal/agents"
 	"github.com/tdeshazo/goskill/internal/installer"
+	"github.com/tdeshazo/goskill/internal/search"
 	"github.com/tdeshazo/goskill/internal/skills"
 	"github.com/tdeshazo/goskill/internal/source"
 	"github.com/tdeshazo/goskill/internal/terminal"
@@ -247,10 +248,10 @@ func TestSkillSelectionModelFiltersAndSelects(t *testing.T) {
 }
 
 func TestRenderFindResultsGroupsBySourceAndIncludesInstallCommands(t *testing.T) {
-	view := renderFindResults("react", []foundSkill{
-		{Name: "postgres", Source: "db/skills", Installs: 12},
-		{Name: "react best practices", Source: "vercel-labs/agent-skills", Installs: 120},
-		{Name: "react", Source: "vercel-labs/agent-skills", Installs: 140},
+	view := renderFindResults("react", []search.SearchResult{
+		{Name: "postgres", CanonicalSource: "db/skills", Installs: 12},
+		{Name: "react best practices", CanonicalSource: "vercel-labs/agent-skills", Installs: 120},
+		{Name: "react", CanonicalSource: "vercel-labs/agent-skills", Installs: 140},
 	})
 	for _, want := range []string{
 		"Find skills",
@@ -280,7 +281,7 @@ func TestRenderFindResultsGroupsBySourceAndIncludesInstallCommands(t *testing.T)
 }
 
 func TestFindInstallCommandQuotesShellSpecialCharacters(t *testing.T) {
-	got := findInstallCommand(foundSkill{Name: "john's skill", Source: "owner/repo"})
+	got := findInstallCommand(search.SearchResult{Name: "john's skill", CanonicalSource: "owner/repo"})
 	want := "goskill add owner/repo --skill 'john'\\''s skill'"
 	if got != want {
 		t.Fatalf("command = %q, want %q", got, want)

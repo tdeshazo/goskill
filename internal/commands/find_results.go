@@ -3,18 +3,20 @@ package commands
 import (
 	"sort"
 	"strings"
+
+	"github.com/tdeshazo/goskill/internal/search"
 )
 
-func sortedFoundSkillsBySource(results []foundSkill) []foundSkill {
-	sorted := append([]foundSkill(nil), results...)
+func sortedFoundSkillsBySource(results []search.SearchResult) []search.SearchResult {
+	sorted := append([]search.SearchResult(nil), results...)
 	sort.SliceStable(sorted, func(i, j int) bool {
-		if sorted[i].Source == sorted[j].Source {
+		if sorted[i].CanonicalSource == sorted[j].CanonicalSource {
 			if sorted[i].Installs == sorted[j].Installs {
 				return sorted[i].Name < sorted[j].Name
 			}
 			return sorted[i].Installs > sorted[j].Installs
 		}
-		return sorted[i].Source < sorted[j].Source
+		return sorted[i].CanonicalSource < sorted[j].CanonicalSource
 	})
 	return sorted
 }
@@ -27,11 +29,11 @@ func findSourceGroup(source string) string {
 	return source
 }
 
-func findInstallCommand(skill foundSkill) string {
-	if strings.TrimSpace(skill.Source) == "" {
+func findInstallCommand(skill search.SearchResult) string {
+	if strings.TrimSpace(skill.CanonicalSource) == "" {
 		return "goskill add --skill " + shellQuote(skill.Name)
 	}
-	return "goskill add " + shellQuote(skill.Source) + " --skill " + shellQuote(skill.Name)
+	return "goskill add " + shellQuote(skill.CanonicalSource) + " --skill " + shellQuote(skill.Name)
 }
 
 func shellQuote(value string) string {

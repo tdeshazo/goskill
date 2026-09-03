@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tdeshazo/goskill/internal/search"
 	"github.com/tdeshazo/goskill/internal/skills"
 )
 
@@ -138,7 +139,7 @@ func renderSkillSelectionPrompt(discovered []skills.Skill) string {
 	return renderInfo("Select skills", lines...)
 }
 
-func renderFindResults(query string, results []foundSkill) string {
+func renderFindResults(query string, results []search.SearchResult) string {
 	if len(results) == 0 {
 		return renderInfo("Find skills", selectorHintStyle.Render("No skills found for "+query))
 	}
@@ -148,7 +149,7 @@ func renderFindResults(query string, results []foundSkill) string {
 	}
 	lastSource := ""
 	for _, skill := range sortedFoundSkillsBySource(results) {
-		source := findSourceGroup(skill.Source)
+		source := findSourceGroup(skill.CanonicalSource)
 		if source != lastSource {
 			if lastSource != "" {
 				lines = append(lines, selectorBar())

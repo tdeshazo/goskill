@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -19,9 +17,16 @@ import (
 	"github.com/tdeshazo/goskill/internal/github"
 	"github.com/tdeshazo/goskill/internal/installer"
 	"github.com/tdeshazo/goskill/internal/lockfile"
+	"github.com/tdeshazo/goskill/internal/search"
 	"github.com/tdeshazo/goskill/internal/skills"
 	"github.com/tdeshazo/goskill/internal/source"
 	"github.com/tdeshazo/goskill/internal/wellknown"
+)
+
+const (
+	findEndpointTimeout = 10 * time.Second
+	// Find tries the rich and compatibility endpoints sequentially.
+	findTimeout = 2 * findEndpointTimeout
 )
 
 type App struct {
@@ -431,26 +436,32 @@ func (a App) Remove(skillNames []string, opts RemoveOptions) error {
 	return nil
 }
 
-type foundSkill struct {
-	Name     string `json:"name"`
-	Source   string `json:"source"`
-	Installs int    `json:"installs"`
-}
-
 func (a App) Find(args []string) error {
-	query := strings.Join(args, " ")
-	if strings.TrimSpace(query) == "" {
+	query := strings.TrimSpace(strings.Join(args, " "))
+	if query == "" {
 		return errors.New("usage: skills find <query>")
 	}
 	apiBase := envDefault("SKILLS_API_URL", "https://skills.sh")
-	u := apiBase + "/api/search?q=" + url.QueryEscape(query) + "&limit=10"
-	var payload struct {
-		Skills []foundSkill `json:"skills"`
-	}
-	if err := fetchJSON(u, &payload); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), findTimeout)
+	defer cancel()
+	provider := search.NewSkillsSHProviderWithOptions(search.SkillsSHProviderOptions{
+		BaseURL:         apiBase,
+		RichSearchURL:   os.Getenv("SKILLS_RICH_SEARCH_URL"),
+		LegacySearchURL: os.Getenv("SKILLS_SEARCH_URL"),
+		AuthToken:       first(os.Getenv("SKILLS_API_TOKEN"), os.Getenv("VERCEL_OIDC_TOKEN")),
+		Timeout:         findEndpointTimeout,
+	})
+	response, err := search.NewAggregator(provider).Search(ctx, search.SearchQuery{
+		Text:  query,
+		Limit: 10,
+	})
+	if err != nil {
 		return err
 	}
-	a.writeOut(renderFindResults(query, payload.Skills))
+	if !response.HasSuccessfulProvider() {
+		return response.FirstError()
+	}
+	a.writeOut(renderFindResults(query, response.Results))
 	return nil
 }
 
@@ -1021,24 +1032,6 @@ func shorten(path, cwd string) string {
 		return "~" + string(filepath.Separator) + rel
 	}
 	return path
-}
-
-func fetchJSON(u string, out any) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return err
-	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("request failed: %s", res.Status)
-	}
-	return json.NewDecoder(res.Body).Decode(out)
 }
 
 func envDefault(key, fallback string) string {

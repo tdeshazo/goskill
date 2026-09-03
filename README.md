@@ -185,4 +185,8 @@ Project lock files remain timestamp-free and sorted for stable diffs. Global loc
 | `GOSKILL_NO_UPDATE_CHECK` | Set to `1` to disable release update warnings |
 | `GOSKILL_UPDATE_REPO` | Overrides the GitHub repository checked for releases |
 | `SKILLS_DOWNLOAD_URL` | Overrides the blob download API base |
-| `SKILLS_API_URL` | Overrides the search API base |
+| `SKILLS_API_URL` | Overrides the skills.sh search API base |
+| `SKILLS_RICH_SEARCH_URL` | Overrides the preferred skills.sh v1 search endpoint |
+| `SKILLS_SEARCH_URL` | Overrides the compatibility skills.sh search endpoint |
+| `SKILLS_API_TOKEN` | Optional bearer token for the richer skills.sh endpoint |
+| `VERCEL_OIDC_TOKEN` | Fallback optional bearer token for the richer skills.sh endpoint |
