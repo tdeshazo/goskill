@@ -175,6 +175,8 @@ goskill find --providers # Show built-in and configured optional registries
 goskill agent list
 goskill spec [--revision]
 goskill validate <skills>
+goskill validate --profile recommended <skills>
+goskill validate --profile portable <skills>
 goskill validate --format json <skills>
 goskill validate --sarif <skills>
 goskill check
@@ -195,7 +197,7 @@ Aliases:
 
 ## Agent Skills conformance
 
-`goskill validate` is the strict Agent Skills format validator. It reports
+`goskill validate` defaults to the strict `spec` Agent Skills format validator. It reports
 stable `ASxxx` error codes for invalid `SKILL.md` frontmatter and name,
 description, compatibility, metadata, and `allowed-tools` conformance. It does
 not lint prose, check local links, or reject duplicate names. The embedded
@@ -215,6 +217,20 @@ validation report, or `--format sarif` (or `--sarif`) for SARIF 2.1.0. Machine
 formats write only their JSON document to stdout, including when invalid skills
 produce a nonzero exit status. Usage and source-resolution failures remain
 ordinary command errors and do not emit a partial machine report.
+
+Validation profiles make the policy explicit:
+
+| Profile | Rules | Exit behavior |
+| --- | --- | --- |
+| `spec` (default) | Normative `ASxxx` conformance errors only. | Nonzero only for `ASxxx` errors. |
+| `recommended` | `spec` plus official-guidance `GSxxx` warnings. | Warnings leave the skill valid and exit zero. |
+| `portable` | `recommended` plus cross-client `GPxxx` portability errors. | Warnings exit zero; portability errors exit nonzero. |
+
+For example, a 501-line `SKILL.md` emits `GS210` under `recommended`, but is
+still valid and exits zero. `portable` additionally requires the exact
+uppercase `SKILL.md` filename, so its reference-compatible lowercase
+`skill.md` alternative is an error on case-sensitive clients. See the
+[conformance contract](docs/conformance.md) for the complete profile policy.
 
 ## Find options
 

@@ -23,32 +23,87 @@ const (
 // conformance profile. It accepts either SKILL.md or skill.md, matching the
 // pinned reference parser's compatibility behavior.
 func ValidateSkillDirectory(dir string) []Diagnostic {
+	return ValidateSkillDirectoryWithProfile(dir, ProfileSpec)
+}
+
+// ValidateSkillDirectoryWithProfile validates a skill directory with profile.
+// It accepts either SKILL.md or skill.md, matching the pinned reference
+// parser's compatibility behavior.
+func ValidateSkillDirectoryWithProfile(dir string, profile Profile) []Diagnostic {
 	path, ok := validationSkillFile(dir)
 	if !ok {
 		return []Diagnostic{diagnostic(RuleSkillMDRequired, dir, "missing required file: SKILL.md")}
 	}
-	return ValidateSkillMD(path)
+	return ValidateSkillMDWithProfile(path, profile)
 }
 
 // ValidateSkillMD validates one SKILL.md file using only normative Agent
 // Skills requirements. It deliberately excludes repository-local checks such
 // as duplicate names and linked-file existence.
 func ValidateSkillMD(path string) []Diagnostic {
+	return ValidateSkillMDWithProfile(path, ProfileSpec)
+}
+
+// ValidateSkillMDWithProfile validates one SKILL.md file using profile. The
+// spec profile deliberately excludes repository-local checks such as duplicate
+// names and linked-file existence.
+func ValidateSkillMDWithProfile(path string, profile Profile) []Diagnostic {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return []Diagnostic{diagnostic(RuleSkillMDRequired, path, "failed to read SKILL.md: "+err.Error())}
 	}
+
+	var diagnostics []Diagnostic
 	document, err := parseSkillDocument(string(raw))
 	if err != nil {
 		code := RuleFrontmatterYAML
 		if strings.Contains(err.Error(), "must start") || strings.Contains(err.Error(), "properly closed") {
 			code = RuleFrontmatterRequired
 		}
-		return []Diagnostic{diagnostic(code, path, err.Error())}
+		diagnostics = append(diagnostics, diagnostic(code, path, err.Error()))
+	} else {
+		diagnostics = append(diagnostics, validateFrontmatter(document.frontmatter, filepath.Dir(path), path)...)
 	}
-	diagnostics := validateFrontmatter(document.frontmatter, filepath.Dir(path), path)
+	diagnostics = append(diagnostics, profileDiagnostics(path, string(raw), profile)...)
 	SortDiagnostics(diagnostics)
 	return diagnostics
+}
+
+func profileDiagnostics(path, raw string, profile Profile) []Diagnostic {
+	if profile != ProfileRecommended && profile != ProfilePortable {
+		return nil
+	}
+
+	diagnostics := []Diagnostic{}
+	if lines := skillLineCount(raw); lines > 500 {
+		diagnostics = append(diagnostics, diagnosticWithSeverity(
+			RuleSkillLineCount,
+			SeverityWarning,
+			path,
+			fmt.Sprintf("SKILL.md has %d lines; official guidance recommends 500 lines or fewer", lines),
+		))
+	}
+	if profile == ProfilePortable && filepath.Base(path) == "skill.md" {
+		diagnostics = append(diagnostics, diagnosticWithSeverity(
+			RuleSkillFilename,
+			SeverityError,
+			path,
+			"portable profile requires the exact uppercase filename SKILL.md; lowercase skill.md is not portable across case-sensitive clients",
+		))
+	}
+	return diagnostics
+}
+
+func skillLineCount(raw string) int {
+	if raw == "" {
+		return 0
+	}
+	normalized := strings.ReplaceAll(raw, "\r\n", "\n")
+	count := strings.Count(normalized, "\n")
+	if !strings.HasSuffix(normalized, "\n") {
+		count++
+	}
+	return count
 }
 
 func validateFrontmatter(frontmatter map[string]any, skillDir, path string) []Diagnostic {
@@ -180,7 +235,11 @@ func validateStringField(frontmatter map[string]any, field, code, path string) [
 }
 
 func diagnostic(code, path, message string) Diagnostic {
-	return Diagnostic{Code: code, Severity: SeverityError, Message: message, Path: path}
+	return diagnosticWithSeverity(code, SeverityError, path, message)
+}
+
+func diagnosticWithSeverity(code string, severity Severity, path, message string) Diagnostic {
+	return Diagnostic{Code: code, Severity: severity, Message: message, Path: path}
 }
 
 // SortDiagnostics provides stable rendering and machine consumption order.

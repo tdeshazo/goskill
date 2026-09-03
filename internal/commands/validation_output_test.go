@@ -19,15 +19,21 @@ func TestParseValidateFormats(t *testing.T) {
 		name    string
 		args    []string
 		format  validationFormat
+		profile skills.Profile
 		wantErr string
 	}{
-		{name: "text default", args: []string{"skill"}, format: validationFormatText},
-		{name: "json alias", args: []string{"--json", "skill"}, format: validationFormatJSON},
-		{name: "sarif alias", args: []string{"--sarif", "skill"}, format: validationFormatSARIF},
-		{name: "format equals", args: []string{"--format=sarif", "skill"}, format: validationFormatSARIF},
+		{name: "text default", args: []string{"skill"}, format: validationFormatText, profile: skills.ProfileSpec},
+		{name: "json alias", args: []string{"--json", "skill"}, format: validationFormatJSON, profile: skills.ProfileSpec},
+		{name: "sarif alias", args: []string{"--sarif", "skill"}, format: validationFormatSARIF, profile: skills.ProfileSpec},
+		{name: "format equals", args: []string{"--format=sarif", "skill"}, format: validationFormatSARIF, profile: skills.ProfileSpec},
+		{name: "profile before format", args: []string{"--profile", "recommended", "--json", "skill"}, format: validationFormatJSON, profile: skills.ProfileRecommended},
+		{name: "profile equals after format", args: []string{"--sarif", "--profile=portable", "skill"}, format: validationFormatSARIF, profile: skills.ProfilePortable},
 		{name: "mutually exclusive", args: []string{"--json", "--sarif", "skill"}, wantErr: "mutually exclusive"},
 		{name: "format and alias", args: []string{"--format", "json", "--json", "skill"}, wantErr: "mutually exclusive"},
 		{name: "invalid format", args: []string{"--format", "xml", "skill"}, wantErr: "invalid validation format"},
+		{name: "missing profile", args: []string{"--profile"}, wantErr: "--profile requires a value"},
+		{name: "invalid profile", args: []string{"--profile", "lint", "skill"}, wantErr: "invalid validation profile"},
+		{name: "duplicate profile", args: []string{"--profile", "spec", "--profile=portable", "skill"}, wantErr: "mutually exclusive"},
 		{name: "unknown option", args: []string{"--unknown", "skill"}, wantErr: "unknown validate option"},
 	}
 	for _, test := range tests {
@@ -39,7 +45,7 @@ func TestParseValidateFormats(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || opts.Format != test.format || len(opts.Sources) != 1 {
+			if err != nil || opts.Format != test.format || opts.Profile != test.profile || len(opts.Sources) != 1 {
 				t.Fatalf("parseValidate(%v) = %#v, %v", test.args, opts, err)
 			}
 		})
@@ -93,6 +99,165 @@ func TestValidateJSONValidResult(t *testing.T) {
 	}
 }
 
+func TestValidateProfilesPreserveExitAndTextBehavior(t *testing.T) {
+	root := t.TempDir()
+	longSkill := makeSkill(t, root, "long-skill", "Description")
+	longContent := "---\nname: long-skill\ndescription: Description\n---\n" + strings.Repeat("content\n", 497)
+	if err := os.WriteFile(filepath.Join(longSkill, "SKILL.md"), []byte(longContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(args ...string) (string, error) {
+		t.Helper()
+		var out bytes.Buffer
+		app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: root}
+		err := app.Run(append([]string{"validate"}, args...))
+		return out.String(), err
+	}
+
+	defaultText, err := run("long-skill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	specText, err := run("--profile", "spec", "long-skill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaultText != specText {
+		t.Fatalf("default output differs from spec profile:\ndefault: %s\nspec: %s", defaultText, specText)
+	}
+
+	jsonOutput, err := run("--profile", "recommended", "--json", "long-skill")
+	if err != nil {
+		t.Fatalf("warning-only recommended profile returned error: %v", err)
+	}
+	if jsonOutput != terminal.StripEscapes(jsonOutput) {
+		t.Fatalf("JSON contains ANSI: %q", jsonOutput)
+	}
+	var report validationReport
+	if err := json.Unmarshal([]byte(jsonOutput), &report); err != nil {
+		t.Fatal(err)
+	}
+	if !report.Valid || len(report.Files) != 1 || !report.Files[0].Valid {
+		t.Fatalf("recommended report = %#v", report)
+	}
+	if report.Profile != string(skills.ProfileRecommended) || report.Summary.Errors != 0 || report.Summary.Warnings != 1 {
+		t.Fatalf("recommended report = %#v", report)
+	}
+	if len(report.Diagnostics) != 1 || report.Diagnostics[0].Code != skills.RuleSkillLineCount || report.Diagnostics[0].Severity != skills.SeverityWarning {
+		t.Fatalf("recommended report = %#v", report)
+	}
+}
+
+func TestValidatePortableSARIFReportsLowercaseFilename(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "skill.md"), []byte("---\nname: demo\ndescription: Description\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: root}
+	err := app.Run([]string{"validate", "--profile=portable", "--sarif", "demo"})
+	if code, ok := ExitCode(err); !ok || code != 1 {
+		t.Fatalf("ExitCode(%v) = %d, %v", err, code, ok)
+	}
+	if out.String() != terminal.StripEscapes(out.String()) {
+		t.Fatalf("SARIF contains ANSI: %q", out.String())
+	}
+	var log sarifLog
+	if err := json.Unmarshal(out.Bytes(), &log); err != nil {
+		t.Fatal(err)
+	}
+	run := log.Runs[0]
+	if run.Properties.Profile != string(skills.ProfilePortable) || run.Properties.Summary.Errors != 1 || run.Properties.Summary.Warnings != 0 {
+		t.Fatalf("SARIF properties = %#v", run.Properties)
+	}
+	if run.Properties.Specification.Revision != skills.SpecRevision {
+		t.Fatalf("SARIF properties = %#v", run.Properties)
+	}
+	if len(run.Results) != 1 || run.Results[0].RuleID != skills.RuleSkillFilename || run.Results[0].Level != "error" {
+		t.Fatalf("SARIF results = %#v", run.Results)
+	}
+	if filepath.Base(run.Results[0].Properties.Path) != "skill.md" {
+		t.Fatalf("SARIF diagnostic path lost actual filename casing: %#v", run.Results[0].Properties)
+	}
+	foundGuidance, foundPortable := false, false
+	for _, rule := range run.Tool.Driver.Rules {
+		switch rule.ID {
+		case skills.RuleSkillLineCount:
+			foundGuidance = rule.DefaultConfiguration.Level == "warning"
+		case skills.RuleSkillFilename:
+			foundPortable = rule.DefaultConfiguration.Level == "error"
+		}
+	}
+	if !foundGuidance || !foundPortable {
+		t.Fatalf("SARIF rules = %#v", run.Tool.Driver.Rules)
+	}
+}
+
+func TestValidatePortableJSONReportsLowercaseFilename(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "skill.md"), []byte("---\nname: demo\ndescription: Description\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: root}
+	err := app.Run([]string{"validate", "--profile=portable", "--json", "demo"})
+	if code, ok := ExitCode(err); !ok || code != 1 {
+		t.Fatalf("ExitCode(%v) = %d, %v", err, code, ok)
+	}
+	var report validationReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Files) != 1 || filepath.Base(report.Files[0].Path) != "skill.md" {
+		t.Fatalf("JSON file path lost actual filename casing: %#v", report.Files)
+	}
+	if len(report.Diagnostics) != 1 || report.Diagnostics[0].Code != skills.RuleSkillFilename || filepath.Base(report.Diagnostics[0].Path) != "skill.md" {
+		t.Fatalf("JSON diagnostics = %#v", report.Diagnostics)
+	}
+}
+
+func TestValidatePortableDirectFileCanonicalizesCaseInsensitivePath(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	actualPath := filepath.Join(dir, "skill.md")
+	if err := os.WriteFile(actualPath, []byte("---\nname: demo\ndescription: Description\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	syntheticPath := filepath.Join(dir, "SKILL.md")
+	if _, err := os.Stat(syntheticPath); err != nil {
+		t.Skip("filesystem is case-sensitive")
+	}
+
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: root}
+	err := app.Run([]string{"validate", "--profile=portable", "--json", syntheticPath})
+	if code, ok := ExitCode(err); !ok || code != 1 {
+		t.Fatalf("ExitCode(%v) = %d, %v", err, code, ok)
+	}
+	var report validationReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Files) != 1 || report.Files[0].Path != actualPath {
+		t.Fatalf("direct file report path = %#v, want %q", report.Files, actualPath)
+	}
+	if len(report.Diagnostics) != 1 || report.Diagnostics[0].Code != skills.RuleSkillFilename || report.Diagnostics[0].Path != actualPath {
+		t.Fatalf("direct file diagnostics = %#v", report.Diagnostics)
+	}
+}
+
 func TestValidateSARIFValidResult(t *testing.T) {
 	root := t.TempDir()
 	makeSkill(t, root, "demo", "Description")
@@ -133,11 +298,11 @@ func TestValidateSARIFContainsRuleCatalogAndArtifactLocations(t *testing.T) {
 		t.Fatalf("SARIF header = %#v", log)
 	}
 	run := log.Runs[0]
-	if run.Tool.Driver.Name != "goskill" || len(run.Tool.Driver.Rules) != len(skills.Rules()) || run.Properties.Revision != skills.SpecRevision {
+	if run.Tool.Driver.Name != "goskill" || len(run.Tool.Driver.Rules) != len(skills.RulesForProfile(skills.ProfileSpec)) || run.Properties.Specification.Revision != skills.SpecRevision {
 		t.Fatalf("SARIF run = %#v", run)
 	}
-	for i, rule := range skills.Rules() {
-		if run.Tool.Driver.Rules[i].ID != rule.Code || run.Tool.Driver.Rules[i].DefaultConfiguration.Level != "error" {
+	for i, rule := range skills.RulesForProfile(skills.ProfileSpec) {
+		if run.Tool.Driver.Rules[i].ID != rule.Code || run.Tool.Driver.Rules[i].DefaultConfiguration.Level != sarifLevel(rule.Severity) {
 			t.Fatalf("SARIF rules = %#v", run.Tool.Driver.Rules)
 		}
 	}
@@ -157,7 +322,7 @@ func TestValidationSerializationOrderingAndKnownLocations(t *testing.T) {
 	report := newValidationReport([]validationResult{
 		{Path: "z/SKILL.md", Issues: []skills.Diagnostic{{Code: skills.RuleNameType, Severity: skills.SeverityError, Message: "z", Path: "z/SKILL.md"}}},
 		{Path: "a/SKILL.md", Issues: []skills.Diagnostic{{Code: skills.RuleDescriptionType, Severity: skills.SeverityError, Message: "a", Path: "a/SKILL.md", Line: 3, Column: 2}}},
-	}, 2)
+	}, validationCounts{Diagnostics: 2, Errors: 2}, skills.ProfileSpec)
 	if report.Files[0].Path != "a/SKILL.md" || report.Diagnostics[0].Path != "a/SKILL.md" {
 		t.Fatalf("report ordering = %#v", report)
 	}
@@ -190,7 +355,7 @@ func TestRemoteValidationReportPathsAreStable(t *testing.T) {
 				Message:  "invalid name",
 				Path:     file,
 			}},
-		}}, 1)
+		}}, validationCounts{Diagnostics: 1, Errors: 1}, skills.ProfileSpec)
 		jsonOutput, err := renderValidationJSON(report)
 		if err != nil {
 			t.Fatal(err)
@@ -259,7 +424,7 @@ func TestValidationReportPathsDistinguishGitRefs(t *testing.T) {
 	report := newValidationReport([]validationResult{
 		{Path: releaseFile.Path, ReportPath: releaseFile.ReportPath},
 		{Path: mainFile.Path, ReportPath: mainFile.ReportPath},
-	}, 0)
+	}, validationCounts{}, skills.ProfileSpec)
 	if len(report.Files) != 2 || report.Files[0].Path != mainFile.ReportPath || report.Files[1].Path != releaseFile.ReportPath {
 		t.Fatalf("ref-aware report ordering = %#v", report.Files)
 	}
@@ -334,7 +499,7 @@ func TestValidateHelpDocumentsMachineFormats(t *testing.T) {
 	if err := app.Run([]string{"validate", "--help"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"goskill validate", "--format", "--json", "--sarif"} {
+	for _, want := range []string{"goskill validate", "--profile", "--format", "--json", "--sarif"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("validate help missing %q:\n%s", want, out.String())
 		}

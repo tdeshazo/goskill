@@ -19,6 +19,7 @@ const (
 
 type validationReport struct {
 	SchemaVersion string                  `json:"schema_version"`
+	Profile       string                  `json:"profile"`
 	Valid         bool                    `json:"valid"`
 	Summary       validationReportSummary `json:"summary"`
 	Specification validationSpecification `json:"specification"`
@@ -30,6 +31,22 @@ type validationReportSummary struct {
 	Skills      int `json:"skills"`
 	Diagnostics int `json:"diagnostics"`
 	Errors      int `json:"errors"`
+	Warnings    int `json:"warnings"`
+}
+
+type validationCounts struct {
+	Diagnostics int
+	Errors      int
+	Warnings    int
+}
+
+func (counts *validationCounts) add(diagnostic skills.Diagnostic) {
+	counts.Diagnostics++
+	if diagnostic.Severity == skills.SeverityWarning {
+		counts.Warnings++
+		return
+	}
+	counts.Errors++
 }
 
 type validationSpecification struct {
@@ -45,18 +62,20 @@ type validationFileReport struct {
 	Diagnostics []skills.Diagnostic `json:"diagnostics"`
 }
 
-func newValidationReport(results []validationResult, issueCount int) validationReport {
+func newValidationReport(results []validationResult, counts validationCounts, profile skills.Profile) validationReport {
 	orderedResults := append([]validationResult(nil), results...)
 	sort.SliceStable(orderedResults, func(i, j int) bool {
 		return validationResultPath(orderedResults[i]) < validationResultPath(orderedResults[j])
 	})
 	report := validationReport{
 		SchemaVersion: validationReportSchemaVersion,
-		Valid:         issueCount == 0,
+		Profile:       string(profile),
+		Valid:         counts.Errors == 0,
 		Summary: validationReportSummary{
 			Skills:      len(orderedResults),
-			Diagnostics: issueCount,
-			Errors:      issueCount,
+			Diagnostics: counts.Diagnostics,
+			Errors:      counts.Errors,
+			Warnings:    counts.Warnings,
 		},
 		Specification: validationSpecification{
 			VersioningStatus: skills.SpecVersioningStatus,
@@ -65,7 +84,7 @@ func newValidationReport(results []validationResult, issueCount int) validationR
 			PinnedSourceURL:  skills.SpecSourceURL,
 		},
 		Files:       make([]validationFileReport, 0, len(orderedResults)),
-		Diagnostics: make([]skills.Diagnostic, 0, issueCount),
+		Diagnostics: make([]skills.Diagnostic, 0, counts.Diagnostics),
 	}
 	for _, result := range orderedResults {
 		reportPath := validationResultPath(result)
@@ -77,13 +96,22 @@ func newValidationReport(results []validationResult, issueCount int) validationR
 		skills.SortDiagnostics(diagnostics)
 		report.Files = append(report.Files, validationFileReport{
 			Path:        reportPath,
-			Valid:       len(diagnostics) == 0,
+			Valid:       !hasValidationErrors(diagnostics),
 			Diagnostics: diagnostics,
 		})
 		report.Diagnostics = append(report.Diagnostics, diagnostics...)
 	}
 	skills.SortDiagnostics(report.Diagnostics)
 	return report
+}
+
+func hasValidationErrors(diagnostics []skills.Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == skills.SeverityError {
+			return true
+		}
+	}
+	return false
 }
 
 func validationResultPath(result validationResult) string {
@@ -108,10 +136,10 @@ type sarifLog struct {
 }
 
 type sarifRun struct {
-	Tool       sarifTool               `json:"tool"`
-	Artifacts  []sarifArtifact         `json:"artifacts,omitempty"`
-	Results    []sarifResult           `json:"results"`
-	Properties validationSpecification `json:"properties"`
+	Tool       sarifTool       `json:"tool"`
+	Artifacts  []sarifArtifact `json:"artifacts,omitempty"`
+	Results    []sarifResult   `json:"results"`
+	Properties sarifProperties `json:"properties"`
 }
 
 type sarifTool struct {
@@ -119,10 +147,17 @@ type sarifTool struct {
 }
 
 type sarifDriver struct {
-	Name           string                  `json:"name"`
-	InformationURI string                  `json:"informationUri"`
-	Rules          []sarifRule             `json:"rules"`
-	Properties     validationSpecification `json:"properties"`
+	Name           string          `json:"name"`
+	InformationURI string          `json:"informationUri"`
+	Rules          []sarifRule     `json:"rules"`
+	Properties     sarifProperties `json:"properties"`
+}
+
+type sarifProperties struct {
+	Profile                 string                  `json:"goskill_profile"`
+	ValidationSchemaVersion string                  `json:"goskill_validation_schema_version"`
+	Summary                 validationReportSummary `json:"goskill_summary"`
+	Specification           validationSpecification `json:"goskill_specification"`
 }
 
 type sarifRule struct {
@@ -171,13 +206,14 @@ type sarifRegion struct {
 }
 
 func renderValidationSARIF(report validationReport) (string, error) {
-	rules := make([]sarifRule, 0, len(skills.Rules()))
-	for _, rule := range skills.Rules() {
+	profile := skills.Profile(report.Profile)
+	rules := make([]sarifRule, 0, len(skills.RulesForProfile(profile)))
+	for _, rule := range skills.RulesForProfile(profile) {
 		rules = append(rules, sarifRule{
 			ID:                   rule.Code,
 			Name:                 rule.Code,
 			ShortDescription:     sarifMessage{Text: rule.Summary},
-			DefaultConfiguration: sarifDefaultConfiguration{Level: "error"},
+			DefaultConfiguration: sarifDefaultConfiguration{Level: sarifLevel(rule.Severity)},
 		})
 	}
 
@@ -206,6 +242,12 @@ func renderValidationSARIF(report validationReport) (string, error) {
 		results = append(results, result)
 	}
 
+	properties := sarifProperties{
+		Profile:                 report.Profile,
+		ValidationSchemaVersion: report.SchemaVersion,
+		Summary:                 report.Summary,
+		Specification:           report.Specification,
+	}
 	log := sarifLog{
 		Version: sarifVersion,
 		Schema:  sarifSchemaURI,
@@ -214,11 +256,11 @@ func renderValidationSARIF(report validationReport) (string, error) {
 				Name:           "goskill",
 				InformationURI: "https://github.com/tdeshazo/goskill",
 				Rules:          rules,
-				Properties:     report.Specification,
+				Properties:     properties,
 			}},
 			Artifacts:  artifacts,
 			Results:    results,
-			Properties: report.Specification,
+			Properties: properties,
 		}},
 	}
 	data, err := json.MarshalIndent(log, "", "  ")

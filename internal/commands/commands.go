@@ -683,22 +683,22 @@ func (a App) Validate(args []string) error {
 	files = uniqueValidationFiles(files)
 	issuesByPath := map[string][]skills.Diagnostic{}
 	for _, file := range files {
-		issuesByPath[file.Path] = append(issuesByPath[file.Path], skills.ValidateSkillMD(file.Path)...)
+		issuesByPath[file.Path] = append(issuesByPath[file.Path], skills.ValidateSkillMDWithProfile(file.Path, opts.Profile)...)
 	}
-	var issueCount int
+	counts := validationCounts{}
 	var results []validationResult
 	for _, file := range files {
 		issues := issuesByPath[file.Path]
 		skills.SortDiagnostics(issues)
 		results = append(results, validationResult{Path: file.Path, ReportPath: file.ReportPath, Issues: issues})
-		for range issues {
-			issueCount++
+		for _, issue := range issues {
+			counts.add(issue)
 		}
 	}
 	if opts.Format == validationFormatText {
-		a.writeOut(renderValidationResults(results, len(files), issueCount, a.Cwd))
+		a.writeOut(renderValidationResults(results, len(files), counts, opts.Profile, a.Cwd))
 	} else {
-		report := newValidationReport(results, issueCount)
+		report := newValidationReport(results, counts, opts.Profile)
 		var output string
 		switch opts.Format {
 		case validationFormatJSON:
@@ -713,11 +713,11 @@ func (a App) Validate(args []string) error {
 		}
 		a.writeOut(output)
 	}
-	if issueCount > 0 {
+	if counts.Errors > 0 {
 		if opts.Format != validationFormatText {
-			return validationMachineOutputError{issues: issueCount}
+			return validationMachineOutputError{issues: counts.Errors}
 		}
-		return fmt.Errorf("validation failed: %d issue(s)", issueCount)
+		return fmt.Errorf("validation failed: %d issue(s)", counts.Errors)
 	}
 	return nil
 }
@@ -727,13 +727,19 @@ func (a App) validationSkillFiles(rawSource string) ([]validationFile, func(), e
 	if !filepath.IsAbs(candidate) {
 		candidate = filepath.Join(a.Cwd, candidate)
 	}
-	if _, err := os.Stat(candidate); err == nil {
+	if info, err := os.Stat(candidate); err == nil {
 		abs, err := filepath.Abs(candidate)
 		if err != nil {
 			return nil, nil, err
 		}
 		files, err := validationSkillFilesFromPath(abs, "")
-		return validationFilesForReport(abs, abs, files), nil, err
+		if err != nil {
+			return nil, nil, err
+		}
+		if !info.IsDir() && len(files) == 1 {
+			abs = files[0]
+		}
+		return validationFilesForReport(abs, abs, files), nil, nil
 	}
 	parsed, err := source.Parse(rawSource)
 	if err != nil {
@@ -769,7 +775,9 @@ func validationSkillFilesFromPath(path, subpath string) ([]string, error) {
 	}
 	if !info.IsDir() {
 		if filepath.Base(searchPath) == "SKILL.md" || filepath.Base(searchPath) == "skill.md" {
-			return []string{searchPath}, nil
+			if actualPath, ok := skills.ResolveValidationSkillFile(searchPath); ok {
+				return []string{actualPath}, nil
+			}
 		}
 		return nil, fmt.Errorf("%s is not a skill directory or SKILL.md file", searchPath)
 	}

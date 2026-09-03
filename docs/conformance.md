@@ -13,9 +13,31 @@ prints only the SHA for scripts.
 
 The command validates a skill directory's `SKILL.md` (or the reference
 implementation-compatible lowercase `skill.md`) and emits deterministic,
-structured `ASxxx` diagnostics. Diagnostics are ordered by path, line, column,
-and rule code. P0 diagnostics are all errors; line and column are currently
-zero.
+structured diagnostics. Diagnostics are ordered by path, line, column, and
+rule code; line and column are currently zero.
+
+## Validation profiles
+
+`goskill validate <source>` is exactly equivalent to
+`goskill validate --profile spec <source>`. Profiles are layered and stable:
+
+| Profile | Rules | Severity and exit status |
+| --- | --- | --- |
+| `spec` | Normative `ASxxx` Agent Skills requirements. | All findings are errors; any finding makes the result invalid and exits nonzero. |
+| `recommended` | `spec` plus `GSxxx` official authoring guidance. | Guidance findings are warnings. Warnings do not make a result invalid and exit zero. |
+| `portable` | `recommended` plus `GPxxx` cross-client interoperability checks. | `GSxxx` remains warning-only; `GPxxx` portability failures are errors and exit nonzero. |
+
+The initial guidance rule is `GS210`: a `SKILL.md` above 500 physical lines
+warns with its actual line count. This is official guidance, not a normative
+specification requirement: a 501-line skill is valid and exits zero with the
+`recommended` profile.
+
+The initial portability rule is `GP310`: `portable` requires the exact
+uppercase filename `SKILL.md`. The `spec` profile continues to accept lowercase
+`skill.md` for compatibility with the pinned reference parser, but that name is
+not portable to case-sensitive client implementations. No broad linting,
+security analysis, or speculative compatibility heuristics are included in
+these profiles.
 
 ## Machine-readable output
 
@@ -27,14 +49,19 @@ goskill validate --format json ./my-skill
 goskill validate --json ./my-skill
 goskill validate --format sarif ./my-skill > conformance.sarif
 goskill validate --sarif ./my-skill > conformance.sarif
+goskill validate --profile recommended --json ./my-skill
+goskill validate --profile portable --sarif ./my-skill > portability.sarif
 ```
 
-`--format` accepts `text`, `json`, or `sarif`; it cannot be combined with the
-`--json` or `--sarif` aliases. JSON reports use schema version `1` and include
-validity, summary counts, the pinned specification metadata, files, and the
-complete sorted diagnostic list. SARIF output is SARIF 2.1.0, publishes every
-known `ASxxx` rule in the tool driver, includes pinned specification metadata,
-and reports artifact URIs. Every diagnostic with a known path has a physical
+`--profile` accepts `spec`, `recommended`, or `portable`; it can be combined in
+either order with `--format`. `--format` accepts `text`, `json`, or `sarif`; it
+cannot be combined with the `--json` or `--sarif` aliases. JSON reports use
+schema version `1` and include the active profile, validity, error and warning
+counts, pinned specification metadata, files, and the complete sorted
+diagnostic list. SARIF output is SARIF 2.1.0, publishes the active profile's
+rule catalog with error/warning levels, includes the active profile, summary
+counts, and pinned specification metadata in `goskill_*` properties, and
+reports artifact URIs. Every diagnostic with a known path has a physical
 artifact location; its source region is omitted until line information exists.
 
 Both machine formats are deterministic and ANSI-free. A conformance failure
@@ -42,7 +69,7 @@ still exits nonzero, but its complete JSON/SARIF document is the only stdout
 content. Invalid format flags, invalid sources, and other operational failures
 produce normal command errors instead of a partial report.
 
-## What strict validation guarantees
+## What the `spec` profile guarantees
 
 Strict validation checks only normative format requirements:
 
@@ -58,12 +85,14 @@ Strict validation checks only normative format requirements:
 The stable rule catalog is exposed in `internal/skills/rules.go`. Scripts that
 consume command output should use the bracketed rule code, not diagnostic text.
 
-## What it does not guarantee
+## What profiles do not guarantee
 
-P0 does not lint prose, recommendations, portability, security, references, or
-repository policy. In particular, duplicate skill names and missing, escaping,
-or broken local Markdown links do not cause `goskill validate` to fail. Those
-are candidates for a future lint profile, not Agent Skills format conformance.
+Profiles do not lint prose, perform security analysis, inspect references, or
+enforce repository policy. In particular, duplicate skill names and missing,
+escaping, or broken local Markdown links do not cause `goskill validate` to
+fail. `recommended` contains only documented official guidance, and `portable`
+contains only narrowly defensible cross-client rules; broad lint/security
+heuristics remain out of scope.
 
 ## Relationship to `skills-ref`
 

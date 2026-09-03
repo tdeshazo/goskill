@@ -131,6 +131,7 @@ func renderFindHelp() string {
 func renderValidateHelp() string {
 	return renderInfo("Validate skills",
 		selectorTitleStyle.Render("goskill validate [options] <skills>"),
+		"--profile <profile>   spec (default), recommended, or portable",
 		"--format <format>     text (default), json, or sarif",
 		"--json                Alias for --format json",
 		"--sarif               Alias for --format sarif",
@@ -305,7 +306,7 @@ func providerProvenanceLabel(skill search.SearchResult) string {
 	return strings.Join(labels, " · ")
 }
 
-func renderValidationResults(results []validationResult, total int, issueCount int, cwd string) string {
+func renderValidationResults(results []validationResult, total int, counts validationCounts, profile skills.Profile, cwd string) string {
 	lines := []string{}
 	for _, result := range results {
 		path := shorten(result.Path, cwd)
@@ -318,8 +319,16 @@ func renderValidationResults(results []validationResult, total int, issueCount i
 			lines = append(lines, "  "+selectorWarningStyle.Render(fmt.Sprintf("[%s] %s", issue.Code, issue.Message)))
 		}
 	}
-	if issueCount > 0 {
-		return renderWarning("Validation failed", lines...)
+	if counts.Errors > 0 {
+		title := "Validation failed"
+		if profile != skills.ProfileSpec {
+			title += " (" + string(profile) + ")"
+		}
+		return renderWarning(title, lines...)
+	}
+	if counts.Warnings > 0 {
+		lines = append(lines, selectorWarningStyle.Render(fmt.Sprintf("Validated %d skill(s): %d warning(s)", total, counts.Warnings)))
+		return renderWarning("Validation warnings ("+string(profile)+")", lines...)
 	}
 	lines = append(lines, selectorSuccessStyle.Render(fmt.Sprintf("Validated %d skill(s): OK", total)))
 	return renderSuccess("Validation", lines...)

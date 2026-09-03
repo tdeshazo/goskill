@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tdeshazo/goskill/internal/skills"
 	"github.com/tdeshazo/goskill/internal/source"
 )
 
@@ -21,6 +22,7 @@ const (
 
 type validationOptions struct {
 	Format  validationFormat
+	Profile skills.Profile
 	Sources []string
 	Help    bool
 }
@@ -46,8 +48,9 @@ func (e validationMachineOutputError) ExitCode() int {
 }
 
 func parseValidate(args []string) (validationOptions, error) {
-	opts := validationOptions{Format: validationFormatText}
+	opts := validationOptions{Format: validationFormatText, Profile: skills.ProfileSpec}
 	formatSet := false
+	profileSet := false
 	setFormat := func(value string) error {
 		if formatSet {
 			return errors.New("validation output format options are mutually exclusive")
@@ -61,13 +64,25 @@ func parseValidate(args []string) (validationOptions, error) {
 			return fmt.Errorf("invalid validation format %q (want text, json, or sarif)", value)
 		}
 	}
+	setProfile := func(value string) error {
+		if profileSet {
+			return errors.New("validation profile options are mutually exclusive")
+		}
+		profile := skills.Profile(strings.ToLower(strings.TrimSpace(value)))
+		if !profile.Valid() {
+			return fmt.Errorf("invalid validation profile %q (want spec, recommended, or portable)", value)
+		}
+		opts.Profile = profile
+		profileSet = true
+		return nil
+	}
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch arg {
 		case "--help", "-h":
 			if len(args) != 1 {
-				return validationOptions{}, errors.New("usage: goskill validate [--format text|json|sarif] <skills>")
+				return validationOptions{}, errors.New("usage: goskill validate [--profile spec|recommended|portable] [--format text|json|sarif] <skills>")
 			}
 			opts.Help = true
 			return opts, nil
@@ -77,6 +92,14 @@ func parseValidate(args []string) (validationOptions, error) {
 			}
 			i++
 			if err := setFormat(args[i]); err != nil {
+				return validationOptions{}, err
+			}
+		case "--profile":
+			if i+1 >= len(args) {
+				return validationOptions{}, errors.New("--profile requires a value")
+			}
+			i++
+			if err := setProfile(args[i]); err != nil {
 				return validationOptions{}, err
 			}
 		case "--json":
@@ -94,6 +117,12 @@ func parseValidate(args []string) (validationOptions, error) {
 				}
 				continue
 			}
+			if value, ok := strings.CutPrefix(arg, "--profile="); ok {
+				if err := setProfile(value); err != nil {
+					return validationOptions{}, err
+				}
+				continue
+			}
 			if strings.HasPrefix(arg, "--") {
 				return validationOptions{}, fmt.Errorf("unknown validate option %q", arg)
 			}
@@ -103,7 +132,7 @@ func parseValidate(args []string) (validationOptions, error) {
 		}
 	}
 	if len(opts.Sources) == 0 {
-		return validationOptions{}, errors.New("usage: goskill validate [--format text|json|sarif] <skills>")
+		return validationOptions{}, errors.New("usage: goskill validate [--profile spec|recommended|portable] [--format text|json|sarif] <skills>")
 	}
 	return opts, nil
 }

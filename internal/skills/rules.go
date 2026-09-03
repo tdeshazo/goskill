@@ -17,9 +17,28 @@ const (
 type Severity string
 
 const (
-	// SeverityError indicates a conformance failure. P0 has no warning rules.
+	// SeverityError indicates a conformance or portability failure.
 	SeverityError Severity = "error"
+	// SeverityWarning indicates guidance that does not make a skill invalid.
+	SeverityWarning Severity = "warning"
 )
+
+// Profile selects the Agent Skills validation policy.
+type Profile string
+
+const (
+	// ProfileSpec enforces only normative Agent Skills requirements.
+	ProfileSpec Profile = "spec"
+	// ProfileRecommended adds official authoring guidance as warnings.
+	ProfileRecommended Profile = "recommended"
+	// ProfilePortable adds narrowly scoped cross-client interoperability errors.
+	ProfilePortable Profile = "portable"
+)
+
+// Valid reports whether p is a supported validation profile.
+func (p Profile) Valid() bool {
+	return p == ProfileSpec || p == ProfileRecommended || p == ProfilePortable
+}
 
 // Diagnostic is a structured Agent Skills conformance finding. Line and
 // Column are zero until source locations are available.
@@ -35,8 +54,9 @@ type Diagnostic struct {
 // Rule describes one stable Agent Skills conformance rule. Codes are explicit
 // rather than derived so automation can depend on them across releases.
 type Rule struct {
-	Code    string
-	Summary string
+	Code     string
+	Summary  string
+	Severity Severity
 }
 
 const (
@@ -60,34 +80,59 @@ const (
 	RuleMetadataMapping        = "AS018"
 	RuleMetadataValues         = "AS019"
 	RuleAllowedToolsType       = "AS020"
+	RuleSkillLineCount         = "GS210"
+	RuleSkillFilename          = "GP310"
 )
 
-var ruleCatalog = []Rule{
-	{RuleSkillMDRequired, "SKILL.md is required and readable"},
-	{RuleFrontmatterRequired, "YAML frontmatter is required"},
-	{RuleFrontmatterYAML, "frontmatter must be valid YAML mapping"},
-	{RuleTopLevelFields, "only specified frontmatter fields are allowed"},
-	{RuleNameRequired, "name is required"},
-	{RuleNameType, "name must be a non-empty string"},
-	{RuleNameLength, "name must be at most 64 characters"},
-	{RuleNameLowercase, "name must be lowercase"},
-	{RuleNameHyphenBoundary, "name cannot start or end with a hyphen"},
-	{RuleNameConsecutiveHyphens, "name cannot contain consecutive hyphens"},
-	{RuleNameCharacters, "name may contain only letters, digits, and hyphens"},
-	{RuleNameDirectory, "name must match its parent directory"},
-	{RuleDescriptionRequired, "description is required"},
-	{RuleDescriptionType, "description must be a non-empty string"},
-	{RuleDescriptionLength, "description must be at most 1024 characters"},
-	{RuleCompatibilityType, "compatibility must be a string"},
-	{RuleCompatibilityLength, "compatibility must be between 1 and 500 characters"},
-	{RuleMetadataMapping, "metadata must be a mapping"},
-	{RuleMetadataValues, "metadata keys and values must be strings"},
-	{RuleAllowedToolsType, "allowed-tools must be a string"},
+var specRuleCatalog = []Rule{
+	{Code: RuleSkillMDRequired, Summary: "SKILL.md is required and readable", Severity: SeverityError},
+	{Code: RuleFrontmatterRequired, Summary: "YAML frontmatter is required", Severity: SeverityError},
+	{Code: RuleFrontmatterYAML, Summary: "frontmatter must be valid YAML mapping", Severity: SeverityError},
+	{Code: RuleTopLevelFields, Summary: "only specified frontmatter fields are allowed", Severity: SeverityError},
+	{Code: RuleNameRequired, Summary: "name is required", Severity: SeverityError},
+	{Code: RuleNameType, Summary: "name must be a non-empty string", Severity: SeverityError},
+	{Code: RuleNameLength, Summary: "name must be at most 64 characters", Severity: SeverityError},
+	{Code: RuleNameLowercase, Summary: "name must be lowercase", Severity: SeverityError},
+	{Code: RuleNameHyphenBoundary, Summary: "name cannot start or end with a hyphen", Severity: SeverityError},
+	{Code: RuleNameConsecutiveHyphens, Summary: "name cannot contain consecutive hyphens", Severity: SeverityError},
+	{Code: RuleNameCharacters, Summary: "name may contain only letters, digits, and hyphens", Severity: SeverityError},
+	{Code: RuleNameDirectory, Summary: "name must match its parent directory", Severity: SeverityError},
+	{Code: RuleDescriptionRequired, Summary: "description is required", Severity: SeverityError},
+	{Code: RuleDescriptionType, Summary: "description must be a non-empty string", Severity: SeverityError},
+	{Code: RuleDescriptionLength, Summary: "description must be at most 1024 characters", Severity: SeverityError},
+	{Code: RuleCompatibilityType, Summary: "compatibility must be a string", Severity: SeverityError},
+	{Code: RuleCompatibilityLength, Summary: "compatibility must be between 1 and 500 characters", Severity: SeverityError},
+	{Code: RuleMetadataMapping, Summary: "metadata must be a mapping", Severity: SeverityError},
+	{Code: RuleMetadataValues, Summary: "metadata keys and values must be strings", Severity: SeverityError},
+	{Code: RuleAllowedToolsType, Summary: "allowed-tools must be a string", Severity: SeverityError},
+}
+
+var recommendedRuleCatalog = []Rule{
+	{Code: RuleSkillLineCount, Summary: "SKILL.md should be 500 lines or fewer", Severity: SeverityWarning},
+}
+
+var portableRuleCatalog = []Rule{
+	{Code: RuleSkillFilename, Summary: "portable skills require the exact uppercase filename SKILL.md", Severity: SeverityError},
 }
 
 // Rules returns the complete, stable Agent Skills rule catalog.
 func Rules() []Rule {
-	return append([]Rule(nil), ruleCatalog...)
+	rules := append([]Rule(nil), specRuleCatalog...)
+	rules = append(rules, recommendedRuleCatalog...)
+	rules = append(rules, portableRuleCatalog...)
+	return rules
+}
+
+// RulesForProfile returns every rule that can be emitted by profile.
+func RulesForProfile(profile Profile) []Rule {
+	rules := append([]Rule(nil), specRuleCatalog...)
+	if profile == ProfileRecommended || profile == ProfilePortable {
+		rules = append(rules, recommendedRuleCatalog...)
+	}
+	if profile == ProfilePortable {
+		rules = append(rules, portableRuleCatalog...)
+	}
+	return rules
 }
 
 var allowedFrontmatterFields = map[string]bool{

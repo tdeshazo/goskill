@@ -205,6 +205,41 @@ func ValidationSkillFile(dir string) (string, bool) {
 	return validationSkillFile(dir)
 }
 
+// ResolveValidationSkillFile returns path using the actual casing of its
+// directory entry. This matters when a lowercase skill.md is addressed as
+// SKILL.md on a case-insensitive filesystem.
+func ResolveValidationSkillFile(path string) (string, bool) {
+	base := filepath.Base(path)
+	if base != "SKILL.md" && base != "skill.md" {
+		return "", false
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		return path, true
+	}
+	for _, entry := range entries {
+		if entry.Name() == base {
+			return filepath.Join(filepath.Dir(path), entry.Name()), true
+		}
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name != "SKILL.md" && name != "skill.md" {
+			continue
+		}
+		candidate := filepath.Join(filepath.Dir(path), name)
+		candidateInfo, err := os.Stat(candidate)
+		if err == nil && candidateInfo.Mode().IsRegular() && os.SameFile(info, candidateInfo) {
+			return candidate, true
+		}
+	}
+	return path, true
+}
+
 func Filter(list []Skill, names []string) []Skill {
 	if len(names) == 0 {
 		return list
@@ -228,6 +263,31 @@ func Filter(list []Skill, names []string) []Skill {
 }
 
 func validationSkillFile(dir string) (string, bool) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return validationSkillFileByStat(dir)
+	}
+	paths := map[string]string{}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "SKILL.md" || name == "skill.md" {
+			paths[name] = filepath.Join(dir, name)
+		}
+	}
+	for _, name := range []string{"SKILL.md", "skill.md"} {
+		path, ok := paths[name]
+		if !ok {
+			continue
+		}
+		info, err := os.Stat(path)
+		if err == nil && info.Mode().IsRegular() {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+func validationSkillFileByStat(dir string) (string, bool) {
 	for _, name := range []string{"SKILL.md", "skill.md"} {
 		path := filepath.Join(dir, name)
 		info, err := os.Stat(path)
