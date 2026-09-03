@@ -175,6 +175,7 @@ goskill find --providers # Show built-in and configured optional registries
 goskill agent list
 goskill spec [--revision]
 goskill validate <skills>
+goskill validate --version-info
 goskill validate --profile recommended <skills>
 goskill validate --profile portable <skills>
 goskill validate --format json <skills>
@@ -197,7 +198,8 @@ Aliases:
 
 ## Agent Skills conformance
 
-`goskill validate` defaults to the strict `spec` Agent Skills format validator. It reports
+`goskill validate` defaults to the strict `spec` Agent Skills format validator.
+For that profile: Given the Agent Skills specification revision embedded in this binary, this directory conforms to every normative rule we implement from that specification. It does not claim to implement every possible upstream rule. It reports
 stable `ASxxx` error codes for invalid `SKILL.md` frontmatter and name,
 description, compatibility, metadata, and `allowed-tools` conformance. It does
 not lint prose, check local links, or reject duplicate names. The embedded
@@ -210,6 +212,11 @@ by this build. Agent Skills currently has no formal numbered specification
 release, so goskill identifies the contract by its immutable upstream Git
 revision. `goskill spec --revision` prints only that SHA for scripts; neither
 command queries upstream at runtime.
+
+For a compact, offline validation identity suitable for CI logs and scripts,
+run `goskill validate --version-info`. It prints the goskill build version, the
+embedded `agentskills/agentskills` revision, and selected validation profile;
+it accepts no skill source or machine-output format.
 
 `goskill validate` writes its existing readable text output by default. For
 automation, use `--format json` (or `--json`) for the complete deterministic

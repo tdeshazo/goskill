@@ -130,12 +130,17 @@ func renderFindHelp() string {
 
 func renderValidateHelp() string {
 	return renderInfo("Validate skills",
-		selectorTitleStyle.Render("goskill validate [options] <skills>"),
+		selectorTitleStyle.Render("goskill validate [options] <skills> | goskill validate [--profile <profile>] --version-info"),
 		"--profile <profile>   spec (default), recommended, or portable",
+		"--version-info        Write offline validator/spec/profile metadata",
 		"--format <format>     text (default), json, or sarif",
 		"--json                Alias for --format json",
 		"--sarif               Alias for --format sarif",
 	)
+}
+
+func renderValidationVersionInfo(version string, profile skills.Profile) string {
+	return fmt.Sprintf("validator: goskill %s\nspec: %s\nprofile: %s\n", version, skills.SpecReference(), profile)
 }
 
 func renderSkillDiscoveryList(list []skills.Skill, title string) string {

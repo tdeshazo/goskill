@@ -1,17 +1,38 @@
 package skills
 
 const (
+	// SpecRepository identifies the immutable upstream repository that provides
+	// the specification snapshot used for conformance validation.
+	SpecRepository = "agentskills/agentskills"
+	// SpecRepositoryURL is the canonical source repository for the pin.
+	SpecRepositoryURL = "https://github.com/" + SpecRepository
 	// SpecRevision is the immutable agentskills/agentskills revision that
 	// defines the conformance contract implemented by this package.
 	SpecRevision = "69ef37e9424c0a7ea9dd2293b559e43ec8176379"
 	// SpecCanonicalURL is the canonical published Agent Skills specification.
 	SpecCanonicalURL = "https://agentskills.io/specification"
 	// SpecSourceURL is the exact upstream specification snapshot for the pin.
-	SpecSourceURL = "https://github.com/agentskills/agentskills/blob/" + SpecRevision + "/docs/specification.mdx"
+	SpecSourceURL = SpecRepositoryURL + "/blob/" + SpecRevision + "/docs/specification.mdx"
 	// SpecVersioningStatus explains why the pin is a Git revision rather than a
 	// semantic version: upstream publishes no formal numbered specification.
 	SpecVersioningStatus = "upstream unversioned; identified by immutable Git revision"
 )
+
+const specDisplayRevisionLength = 7
+
+// SpecDisplayRevision returns a concise, script-friendly representation of the
+// immutable revision without duplicating the pinned value at call sites.
+func SpecDisplayRevision() string {
+	if len(SpecRevision) <= specDisplayRevisionLength {
+		return SpecRevision
+	}
+	return SpecRevision[:specDisplayRevisionLength]
+}
+
+// SpecReference returns the upstream repository and concise pinned revision.
+func SpecReference() string {
+	return SpecRepository + "@" + SpecDisplayRevision()
+}
 
 // Severity classifies a validation diagnostic.
 type Severity string

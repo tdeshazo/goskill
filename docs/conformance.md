@@ -16,6 +16,20 @@ implementation-compatible lowercase `skill.md`) and emits deterministic,
 structured diagnostics. Diagnostics are ordered by path, line, column, and
 rule code; line and column are currently zero.
 
+For the default `spec` profile, goskill makes this bounded contract: Given the Agent Skills specification revision embedded in this binary, this directory conforms to every normative rule we implement from that specification. This does not claim that goskill implements every possible upstream rule, and it does not imply a numbered upstream specification version.
+
+`goskill validate --version-info` reports the build's validation identity
+without resolving a source or accessing the network:
+
+```text
+validator: goskill 0.2.4
+spec: agentskills/agentskills@69ef37e
+profile: spec
+```
+
+The actual build version may differ. `--version-info` may be combined only
+with `--profile`; it accepts no sources or JSON/SARIF output options.
+
 ## Validation profiles
 
 `goskill validate <source>` is exactly equivalent to
@@ -60,7 +74,7 @@ schema version `1` and include the active profile, validity, error and warning
 counts, pinned specification metadata, files, and the complete sorted
 diagnostic list. SARIF output is SARIF 2.1.0, publishes the active profile's
 rule catalog with error/warning levels, includes the active profile, summary
-counts, and pinned specification metadata in `goskill_*` properties, and
+counts and pinned specification metadata in `goskill_*` properties, and
 reports artifact URIs. Every diagnostic with a known path has a physical
 artifact location; its source region is omitted until line information exists.
 

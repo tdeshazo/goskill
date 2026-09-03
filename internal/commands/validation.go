@@ -21,11 +21,14 @@ const (
 )
 
 type validationOptions struct {
-	Format  validationFormat
-	Profile skills.Profile
-	Sources []string
-	Help    bool
+	Format      validationFormat
+	Profile     skills.Profile
+	Sources     []string
+	Help        bool
+	VersionInfo bool
 }
+
+const validateUsage = "usage: goskill validate [--profile spec|recommended|portable] [--format text|json|sarif] <skills>\n       goskill validate [--profile spec|recommended|portable] --version-info"
 
 type validationFile struct {
 	Path       string
@@ -51,6 +54,7 @@ func parseValidate(args []string) (validationOptions, error) {
 	opts := validationOptions{Format: validationFormatText, Profile: skills.ProfileSpec}
 	formatSet := false
 	profileSet := false
+	versionInfoSet := false
 	setFormat := func(value string) error {
 		if formatSet {
 			return errors.New("validation output format options are mutually exclusive")
@@ -82,7 +86,7 @@ func parseValidate(args []string) (validationOptions, error) {
 		switch arg {
 		case "--help", "-h":
 			if len(args) != 1 {
-				return validationOptions{}, errors.New("usage: goskill validate [--profile spec|recommended|portable] [--format text|json|sarif] <skills>")
+				return validationOptions{}, errors.New(validateUsage)
 			}
 			opts.Help = true
 			return opts, nil
@@ -110,6 +114,12 @@ func parseValidate(args []string) (validationOptions, error) {
 			if err := setFormat(string(validationFormatSARIF)); err != nil {
 				return validationOptions{}, err
 			}
+		case "--version-info":
+			if versionInfoSet {
+				return validationOptions{}, errors.New("--version-info may only be specified once")
+			}
+			versionInfoSet = true
+			opts.VersionInfo = true
 		default:
 			if value, ok := strings.CutPrefix(arg, "--format="); ok {
 				if err := setFormat(value); err != nil {
@@ -131,8 +141,17 @@ func parseValidate(args []string) (validationOptions, error) {
 			}
 		}
 	}
+	if opts.VersionInfo {
+		if formatSet {
+			return validationOptions{}, fmt.Errorf("--version-info cannot be combined with output formats\n%s", validateUsage)
+		}
+		if len(opts.Sources) != 0 {
+			return validationOptions{}, fmt.Errorf("--version-info does not accept skill sources\n%s", validateUsage)
+		}
+		return opts, nil
+	}
 	if len(opts.Sources) == 0 {
-		return validationOptions{}, errors.New("usage: goskill validate [--profile spec|recommended|portable] [--format text|json|sarif] <skills>")
+		return validationOptions{}, errors.New(validateUsage)
 	}
 	return opts, nil
 }

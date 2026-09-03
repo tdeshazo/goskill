@@ -86,7 +86,9 @@ func (a App) Run(args []string) error {
 		return nil
 	}
 	cmd, rest := args[0], args[1:]
-	a.warnIfNewerRelease(cmd)
+	if !skipUpdateCheckForCommand(cmd, rest) {
+		a.warnIfNewerRelease(cmd)
+	}
 	switch cmd {
 	case "--help", "-h", "help":
 		a.help()
@@ -134,6 +136,18 @@ func (a App) Run(args []string) error {
 		return fmt.Errorf("unknown command: %s", cmd)
 	}
 	return nil
+}
+
+func skipUpdateCheckForCommand(cmd string, args []string) bool {
+	if cmd != "validate" {
+		return false
+	}
+	for _, arg := range args {
+		if arg == "--version-info" {
+			return true
+		}
+	}
+	return false
 }
 
 func (a App) Add(srcArgs []string, opts AddOptions) error {
@@ -661,6 +675,10 @@ func (a App) Validate(args []string) error {
 	}
 	if opts.Help {
 		a.writeOut(renderValidateHelp())
+		return nil
+	}
+	if opts.VersionInfo {
+		a.writeOut(renderValidationVersionInfo(a.Version, opts.Profile))
 		return nil
 	}
 	var files []validationFile

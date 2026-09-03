@@ -25,6 +25,18 @@ func TestParseSkillMD(t *testing.T) {
 	}
 }
 
+func TestPinnedSpecificationReferenceUsesCentralRepositoryAndShortRevision(t *testing.T) {
+	if len(SpecDisplayRevision()) != 7 || SpecDisplayRevision() != SpecRevision[:7] {
+		t.Fatalf("display revision = %q, full revision = %q", SpecDisplayRevision(), SpecRevision)
+	}
+	if got, want := SpecReference(), SpecRepository+"@"+SpecDisplayRevision(); got != want {
+		t.Fatalf("spec reference = %q, want %q", got, want)
+	}
+	if !strings.HasPrefix(SpecSourceURL, SpecRepositoryURL+"/blob/"+SpecRevision) {
+		t.Fatalf("spec source URL = %q", SpecSourceURL)
+	}
+}
+
 func TestDiscoverAndHash(t *testing.T) {
 	root := t.TempDir()
 	skillDir := filepath.Join(root, "skills", "demo")

@@ -28,12 +28,18 @@ func TestParseValidateFormats(t *testing.T) {
 		{name: "format equals", args: []string{"--format=sarif", "skill"}, format: validationFormatSARIF, profile: skills.ProfileSpec},
 		{name: "profile before format", args: []string{"--profile", "recommended", "--json", "skill"}, format: validationFormatJSON, profile: skills.ProfileRecommended},
 		{name: "profile equals after format", args: []string{"--sarif", "--profile=portable", "skill"}, format: validationFormatSARIF, profile: skills.ProfilePortable},
+		{name: "version info default profile", args: []string{"--version-info"}, format: validationFormatText, profile: skills.ProfileSpec},
+		{name: "version info profile before", args: []string{"--profile", "recommended", "--version-info"}, format: validationFormatText, profile: skills.ProfileRecommended},
+		{name: "version info profile after", args: []string{"--version-info", "--profile=portable"}, format: validationFormatText, profile: skills.ProfilePortable},
 		{name: "mutually exclusive", args: []string{"--json", "--sarif", "skill"}, wantErr: "mutually exclusive"},
 		{name: "format and alias", args: []string{"--format", "json", "--json", "skill"}, wantErr: "mutually exclusive"},
 		{name: "invalid format", args: []string{"--format", "xml", "skill"}, wantErr: "invalid validation format"},
 		{name: "missing profile", args: []string{"--profile"}, wantErr: "--profile requires a value"},
 		{name: "invalid profile", args: []string{"--profile", "lint", "skill"}, wantErr: "invalid validation profile"},
 		{name: "duplicate profile", args: []string{"--profile", "spec", "--profile=portable", "skill"}, wantErr: "mutually exclusive"},
+		{name: "version info with source", args: []string{"--version-info", "skill"}, wantErr: "does not accept skill sources"},
+		{name: "version info with JSON", args: []string{"--version-info", "--json"}, wantErr: "cannot be combined with output formats"},
+		{name: "version info with text format", args: []string{"--format=text", "--version-info"}, wantErr: "cannot be combined with output formats"},
 		{name: "unknown option", args: []string{"--unknown", "skill"}, wantErr: "unknown validate option"},
 	}
 	for _, test := range tests {
@@ -45,8 +51,70 @@ func TestParseValidateFormats(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || opts.Format != test.format || opts.Profile != test.profile || len(opts.Sources) != 1 {
+			if err != nil || opts.Format != test.format || opts.Profile != test.profile {
 				t.Fatalf("parseValidate(%v) = %#v, %v", test.args, opts, err)
+			}
+			if opts.VersionInfo && len(opts.Sources) != 0 {
+				t.Fatalf("version info unexpectedly has sources: %#v", opts)
+			}
+			if !opts.VersionInfo && len(opts.Sources) != 1 {
+				t.Fatalf("validation sources = %#v", opts.Sources)
+			}
+		})
+	}
+}
+
+func TestValidateVersionInfoIsOfflineAndScriptFriendly(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		profile skills.Profile
+	}{
+		{name: "default", args: []string{"--version-info"}, profile: skills.ProfileSpec},
+		{name: "explicit spec", args: []string{"--profile", "spec", "--version-info"}, profile: skills.ProfileSpec},
+		{name: "recommended before", args: []string{"--profile=recommended", "--version-info"}, profile: skills.ProfileRecommended},
+		{name: "portable after", args: []string{"--version-info", "--profile", "portable"}, profile: skills.ProfilePortable},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var out bytes.Buffer
+			app := App{Version: "9.8.7", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: t.TempDir()}
+			if err := app.Run(append([]string{"validate"}, test.args...)); err != nil {
+				t.Fatal(err)
+			}
+			want := "validator: goskill 9.8.7\n" +
+				"spec: " + skills.SpecReference() + "\n" +
+				"profile: " + string(test.profile) + "\n"
+			if got := out.String(); got != want {
+				t.Fatalf("version info = %q, want %q", got, want)
+			}
+			if out.String() != terminal.StripEscapes(out.String()) {
+				t.Fatalf("version info contains ANSI: %q", out.String())
+			}
+		})
+	}
+}
+
+func TestValidateVersionInfoRejectsSourcesAndMachineFormatsWithoutOutput(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{name: "source is never resolved", args: []string{"--version-info", "https://example.invalid/skills"}},
+		{name: "JSON alias", args: []string{"--version-info", "--json"}},
+		{name: "SARIF alias", args: []string{"--sarif", "--version-info"}},
+		{name: "format option", args: []string{"--version-info", "--format", "text"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var out bytes.Buffer
+			app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: t.TempDir()}
+			err := app.Run(append([]string{"validate"}, test.args...))
+			if err == nil || !strings.Contains(err.Error(), "usage: goskill validate") {
+				t.Fatalf("error = %v", err)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("invalid version-info invocation emitted output: %q", out.String())
 			}
 		})
 	}
@@ -499,7 +567,7 @@ func TestValidateHelpDocumentsMachineFormats(t *testing.T) {
 	if err := app.Run([]string{"validate", "--help"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"goskill validate", "--profile", "--format", "--json", "--sarif"} {
+	for _, want := range []string{"goskill validate", "--profile", "--version-info", "--format", "--json", "--sarif"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("validate help missing %q:\n%s", want, out.String())
 		}

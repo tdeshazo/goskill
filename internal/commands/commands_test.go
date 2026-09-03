@@ -57,6 +57,18 @@ func TestBannerDescribesFederatedFind(t *testing.T) {
 	}
 }
 
+func TestValidateVersionInfoSkipsReleaseUpdateCheck(t *testing.T) {
+	if !skipUpdateCheckForCommand("validate", []string{"--version-info"}) {
+		t.Fatal("validate --version-info must not perform a release update check")
+	}
+	if skipUpdateCheckForCommand("validate", []string{"demo"}) {
+		t.Fatal("ordinary validation must retain release update checks")
+	}
+	if skipUpdateCheckForCommand("spec", []string{"--version-info"}) {
+		t.Fatal("only validate --version-info should skip release update checks")
+	}
+}
+
 func TestSpecReportsPinnedSnapshotAndRevisionModeIsScriptFriendly(t *testing.T) {
 	var out bytes.Buffer
 	app := App{Version: "test", Stdout: &out, Cwd: t.TempDir()}
