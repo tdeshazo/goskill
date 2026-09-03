@@ -67,6 +67,22 @@ func renderVersionOutput(version string) string {
 	return renderInfo("goskill", selectorSuccessStyle.Bold(true).Render(version), "Agent Skills spec: "+skills.SpecRevision)
 }
 
+func renderSpecOutput() string {
+	return renderInfo("Agent Skills specification",
+		"Versioning: "+skills.SpecVersioningStatus,
+		"Revision: "+skills.SpecRevision,
+		"Canonical source: "+skills.SpecCanonicalURL,
+		"Pinned source: "+skills.SpecSourceURL,
+	)
+}
+
+func renderSpecHelp() string {
+	return renderInfo("Agent Skills specification",
+		selectorTitleStyle.Render("goskill spec [--revision]"),
+		"--revision            Write only the pinned Git revision",
+	)
+}
+
 func renderBanner() string {
 	lines := []string{
 		selectorHintStyle.Render("The open agent skills ecosystem"),
@@ -77,6 +93,7 @@ func renderBanner() string {
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("remove"), "Remove installed skills"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("find"), "Search federated skill registries"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("agent"), "Inspect configured agent definitions"),
+		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("spec"), "Show the pinned Agent Skills specification"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("validate"), "Validate SKILL.md files"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("check"), "Check locked skills for updates"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("update"), "Update locked skills"),
@@ -86,7 +103,7 @@ func renderBanner() string {
 }
 
 func renderHelp() string {
-	commands := "add, use, list, remove, find, agent, validate, check, update, init, " +
+	commands := "add, use, list, remove, find, agent, spec, validate, check, update, init, " +
 		"install, sync"
 	return renderInfo("Usage",
 		selectorTitleStyle.Render("goskill <command> [options]"),

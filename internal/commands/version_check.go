@@ -78,7 +78,7 @@ func envTruthy(value string) bool {
 
 func skipUpdateCheckCommand(cmd string) bool {
 	switch cmd {
-	case "--help", "-h", "help", "--version", "-v":
+	case "--help", "-h", "help", "--version", "-v", "spec":
 		return true
 	default:
 		return false

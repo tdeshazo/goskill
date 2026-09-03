@@ -57,6 +57,44 @@ func TestBannerDescribesFederatedFind(t *testing.T) {
 	}
 }
 
+func TestSpecReportsPinnedSnapshotAndRevisionModeIsScriptFriendly(t *testing.T) {
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Cwd: t.TempDir()}
+	if err := app.Run([]string{"spec"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{skills.SpecVersioningStatus, skills.SpecRevision, skills.SpecCanonicalURL, skills.SpecSourceURL} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("spec output missing %q:\n%s", want, out.String())
+		}
+	}
+
+	out.Reset()
+	if err := app.Run([]string{"spec", "--revision"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := out.String(), skills.SpecRevision+"\n"; got != want {
+		t.Fatalf("revision output = %q, want %q", got, want)
+	}
+}
+
+func TestSpecHelpAndArguments(t *testing.T) {
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Cwd: t.TempDir()}
+	if err := app.Run([]string{"spec", "--help"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "goskill spec [--revision]") {
+		t.Fatalf("spec help = %s", out.String())
+	}
+	if err := app.Run([]string{"spec", "unexpected"}); err == nil || !strings.Contains(err.Error(), "usage: goskill spec") {
+		t.Fatalf("unexpected spec argument error = %v", err)
+	}
+	if !strings.Contains(renderHelp(), "spec") {
+		t.Fatalf("root help lacks spec: %s", renderHelp())
+	}
+}
+
 func TestAddListRemoveLocalSkill(t *testing.T) {
 	project := t.TempDir()
 	source := makeSkill(t, t.TempDir(), "demo", "Demo skill")

@@ -173,6 +173,7 @@ goskill find --verified --sort popular --provider skillmd <query>
 goskill find --json <query>
 goskill find --providers # Show built-in and configured optional registries
 goskill agent list
+goskill spec [--revision]
 goskill validate <skills>
 goskill check
 goskill update [skills...]
@@ -199,6 +200,12 @@ not lint prose, check local links, or reject duplicate names. The embedded
 Agent Skills specification revision is shown by `goskill --version`; see
 [the conformance contract](docs/conformance.md) for the rule scope, pinned
 revision policy, and known `skills-ref` differences.
+
+Use `goskill spec` to inspect the exact upstream specification snapshot used
+by this build. Agent Skills currently has no formal numbered specification
+release, so goskill identifies the contract by its immutable upstream Git
+revision. `goskill spec --revision` prints only that SHA for scripts; neither
+command queries upstream at runtime.
 
 ## Find options
 

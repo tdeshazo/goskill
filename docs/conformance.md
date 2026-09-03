@@ -4,7 +4,12 @@
 pinned to [`agentskills/agentskills` revision
 `69ef37e9424c0a7ea9dd2293b559e43ec8176379`](https://github.com/agentskills/agentskills/tree/69ef37e9424c0a7ea9dd2293b559e43ec8176379).
 The revision is embedded in the binary and printed by `goskill --version`.
-It is never resolved from `main` at runtime.
+It is never resolved from `main` at runtime. Agent Skills currently publishes
+no formal numbered or semantic specification version, tags, or releases, so
+goskill identifies its conformance contract by this immutable Git revision.
+Run `goskill spec` to inspect the versioning status, revision, and exact source
+snapshot (alongside the canonical published URL); `goskill spec --revision`
+prints only the SHA for scripts.
 
 The command validates a skill directory's `SKILL.md` (or the reference
 implementation-compatible lowercase `skill.md`) and emits deterministic,

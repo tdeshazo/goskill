@@ -1,8 +1,17 @@
 package skills
 
-// SpecRevision is the immutable agentskills/agentskills revision that defines
-// the conformance contract implemented by this package.
-const SpecRevision = "69ef37e9424c0a7ea9dd2293b559e43ec8176379"
+const (
+	// SpecRevision is the immutable agentskills/agentskills revision that
+	// defines the conformance contract implemented by this package.
+	SpecRevision = "69ef37e9424c0a7ea9dd2293b559e43ec8176379"
+	// SpecCanonicalURL is the canonical published Agent Skills specification.
+	SpecCanonicalURL = "https://agentskills.io/specification"
+	// SpecSourceURL is the exact upstream specification snapshot for the pin.
+	SpecSourceURL = "https://github.com/agentskills/agentskills/blob/" + SpecRevision + "/docs/specification.mdx"
+	// SpecVersioningStatus explains why the pin is a Git revision rather than a
+	// semantic version: upstream publishes no formal numbered specification.
+	SpecVersioningStatus = "upstream unversioned; identified by immutable Git revision"
+)
 
 // Severity classifies a validation diagnostic.
 type Severity string

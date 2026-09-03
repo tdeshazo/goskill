@@ -119,6 +119,12 @@ func TestNewerVersion(t *testing.T) {
 	}
 }
 
+func TestSkipUpdateCheckCommandIncludesOfflineSpec(t *testing.T) {
+	if !skipUpdateCheckCommand("spec") {
+		t.Fatal("spec must not perform update checks")
+	}
+}
+
 func TestUpdateRepoUsesBuildDefaultAndEnvOverride(t *testing.T) {
 	old := defaultUpdateRepo
 	defaultUpdateRepo = "fork-owner/fork-repo"
