@@ -83,3 +83,80 @@ jobs:
 
       - name: Ruff format check
         run: python -m ruff format --check setup.py src
+
+  conformance:
+    name: Agent Skills conformance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout goskill
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.26"
+
+      - name: Checkout pinned Agent Skills reference
+        uses: actions/checkout@v4
+        with:
+          repository: agentskills/agentskills
+          ref: 69ef37e9424c0a7ea9dd2293b559e43ec8176379
+          path: .tmp/agentskills
+
+      - name: Install pinned skills-ref dependencies
+        run: uv sync --frozen --project .tmp/agentskills/skills-ref
+
+      - name: Compare conformance fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          go build -o .tmp/goskill .
+          .tmp/agentskills/skills-ref/.venv/bin/python - <<'PY'
+          import subprocess
+          from pathlib import Path
+          from skills_ref import validate
+
+          root = Path("testdata/conformance")
+          # The specification explicitly requires these constraints; the
+          # pinned demonstration validator currently does not enforce them.
+          intentional_reference_differences = {
+              "invalid/description-type",
+              "invalid/compatibility-empty",
+              "invalid/compatibility-type",
+              "invalid/metadata-mapping",
+              "invalid/metadata-key",
+              "invalid/metadata-values",
+              "invalid/allowed-tools-type",
+          }
+
+          for kind in ("valid", "invalid"):
+              expected_valid = kind == "valid"
+              for skill_dir in sorted((root / kind).iterdir()):
+                  if not skill_dir.is_dir():
+                      continue
+                  goskill_valid = subprocess.run(
+                      [".tmp/goskill", "validate", str(skill_dir)],
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                  ).returncode == 0
+                  reference_valid = not validate(skill_dir)
+                  key = f"{kind}/{skill_dir.name}"
+                  if goskill_valid != expected_valid:
+                      raise SystemExit(f"goskill fixture outcome mismatch: {key}")
+                  if key not in intentional_reference_differences and reference_valid != expected_valid:
+                      raise SystemExit(f"skills-ref fixture outcome mismatch: {key}")
+                  if key not in intentional_reference_differences and goskill_valid != reference_valid:
+                      raise SystemExit(f"unexplained conformance disagreement: {key}")
+          PY

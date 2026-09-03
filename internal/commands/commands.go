@@ -668,34 +668,19 @@ func (a App) Validate(args []string) error {
 		if err != nil {
 			return err
 		}
-		if len(sourceFiles) == 0 {
-			return fmt.Errorf("no SKILL.md files found in %s", arg)
-		}
 		files = append(files, sourceFiles...)
 	}
 	sort.Strings(files)
 	files = uniqueStrings(files)
-	issuesByPath := map[string][]skills.ValidationIssue{}
-	pathsByName := map[string][]string{}
+	issuesByPath := map[string][]skills.Diagnostic{}
 	for _, path := range files {
 		issuesByPath[path] = append(issuesByPath[path], skills.ValidateSkillMD(path)...)
-		if name, ok := skills.SkillMDName(path); ok {
-			pathsByName[strings.ToLower(name)] = append(pathsByName[strings.ToLower(name)], path)
-		}
-	}
-	for name, paths := range pathsByName {
-		if len(paths) < 2 {
-			continue
-		}
-		sort.Strings(paths)
-		for _, path := range paths {
-			issuesByPath[path] = append(issuesByPath[path], skills.ValidationIssue{Message: fmt.Sprintf("duplicate skill name %q", name)})
-		}
 	}
 	var issueCount int
 	var results []validationResult
 	for _, path := range files {
 		issues := issuesByPath[path]
+		skills.SortDiagnostics(issues)
 		results = append(results, validationResult{Path: path, Issues: issues})
 		for range issues {
 			issueCount++
@@ -762,7 +747,12 @@ func validationSkillFilesFromPath(path, subpath string) ([]string, error) {
 	if path, ok := skills.ValidationSkillFile(searchPath); ok {
 		return []string{path}, nil
 	}
-	return skills.FindValidationSkillFiles(searchPath, 5), nil
+	if files := skills.FindValidationSkillFiles(searchPath, 5); len(files) > 0 {
+		return files, nil
+	}
+	// Preserve a structured missing-SKILL.md diagnostic for a directory that
+	// contains no skill, rather than returning an unstructured discovery error.
+	return []string{filepath.Join(searchPath, "SKILL.md")}, nil
 }
 
 func uniqueStrings(list []string) []string {

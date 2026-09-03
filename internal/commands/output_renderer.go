@@ -19,7 +19,7 @@ const (
 
 type validationResult struct {
 	Path   string
-	Issues []skills.ValidationIssue
+	Issues []skills.Diagnostic
 }
 
 func renderStatus(title string, lines []string, kind statusKind) string {
@@ -64,7 +64,7 @@ func RenderError(err error) string {
 }
 
 func renderVersionOutput(version string) string {
-	return renderInfo("goskill", selectorSuccessStyle.Bold(true).Render(version))
+	return renderInfo("goskill", selectorSuccessStyle.Bold(true).Render(version), "Agent Skills spec: "+skills.SpecRevision)
 }
 
 func renderBanner() string {
@@ -288,7 +288,7 @@ func renderValidationResults(results []validationResult, total int, issueCount i
 		}
 		lines = append(lines, fmt.Sprintf("%s %s", selectorWarningStyle.Render("●"), selectorTitleStyle.Render(path)))
 		for _, issue := range result.Issues {
-			lines = append(lines, "  "+selectorWarningStyle.Render(issue.Message))
+			lines = append(lines, "  "+selectorWarningStyle.Render(fmt.Sprintf("[%s] %s", issue.Code, issue.Message)))
 		}
 	}
 	if issueCount > 0 {

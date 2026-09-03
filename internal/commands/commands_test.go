@@ -1231,6 +1231,30 @@ func TestValidateLocalSkill(t *testing.T) {
 	}
 }
 
+func TestVersionOutputIncludesAgentSkillsSpecRevision(t *testing.T) {
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Cwd: t.TempDir()}
+	if err := app.Run([]string{"--version"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), skills.SpecRevision) {
+		t.Fatalf("version output lacks spec revision: %s", out.String())
+	}
+}
+
+func TestValidateReportsMissingSkillFileWithRuleCode(t *testing.T) {
+	root := t.TempDir()
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: root}
+	err := app.Run([]string{"validate", "."})
+	if err == nil || !strings.Contains(err.Error(), "validation failed: 1 issue(s)") {
+		t.Fatalf("expected validation failure, got %v", err)
+	}
+	if !strings.Contains(out.String(), "[AS001]") {
+		t.Fatalf("output lacks AS001: %s", out.String())
+	}
+}
+
 func TestValidateReportsFrontmatterSpecIssues(t *testing.T) {
 	source := t.TempDir()
 	dir := filepath.Join(source, "bad-skill")
@@ -1248,7 +1272,7 @@ func TestValidateReportsFrontmatterSpecIssues(t *testing.T) {
 		t.Fatalf("expected validation failure, got %v", err)
 	}
 	for _, want := range []string{
-		"name must match parent directory",
+		"must match parent directory",
 		"name must be lowercase",
 		"name contains invalid characters",
 		"description must be 1024 characters or fewer",
@@ -1356,7 +1380,7 @@ func TestValidateReportsInvalidYAML(t *testing.T) {
 	}
 }
 
-func TestValidateReportsDuplicateSkillNames(t *testing.T) {
+func TestValidateAllowsDuplicateSkillNames(t *testing.T) {
 	root := t.TempDir()
 	for _, parent := range []string{"alpha", "beta"} {
 		dir := filepath.Join(root, parent, "demo-skill")
@@ -1367,16 +1391,12 @@ func TestValidateReportsDuplicateSkillNames(t *testing.T) {
 	}
 	var out bytes.Buffer
 	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: root}
-	err := app.Run([]string{"validate", "."})
-	if err == nil || !strings.Contains(err.Error(), "validation failed: 2 issue(s)") {
-		t.Fatalf("expected validation failure, got %v", err)
-	}
-	if got := strings.Count(out.String(), `duplicate skill name "demo-skill"`); got != 2 {
-		t.Fatalf("expected 2 duplicate messages, got %d:\n%s", got, out.String())
+	if err := app.Run([]string{"validate", "."}); err != nil {
+		t.Fatalf("duplicate names are not a strict conformance failure: %v", err)
 	}
 }
 
-func TestValidateReportsMissingLocalReferences(t *testing.T) {
+func TestValidateAllowsMissingLocalReferences(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "demo-skill")
 	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
@@ -1391,20 +1411,8 @@ func TestValidateReportsMissingLocalReferences(t *testing.T) {
 	}
 	var out bytes.Buffer
 	app := App{Version: "test", Stdout: &out, Stderr: &out, Cwd: root}
-	err := app.Run([]string{"validate", "demo-skill"})
-	if err == nil || !strings.Contains(err.Error(), "validation failed: 2 issue(s)") {
-		t.Fatalf("expected validation failure, got %v", err)
-	}
-	for _, want := range []string{
-		"reference does not exist: docs/missing.md",
-		"reference escapes skill directory: ../outside.md",
-	} {
-		if !strings.Contains(out.String(), want) {
-			t.Fatalf("missing %q in output:\n%s", want, out.String())
-		}
-	}
-	if strings.Contains(out.String(), "docs/guide.md") {
-		t.Fatalf("valid reference should not be reported:\n%s", out.String())
+	if err := app.Run([]string{"validate", "demo-skill"}); err != nil {
+		t.Fatalf("local references are not a strict conformance failure: %v", err)
 	}
 }
 

@@ -190,6 +190,16 @@ Aliases:
 - `goskill upgrade` for `update`
 - `experimental_install` and `experimental_sync` remain accepted as legacy aliases
 
+## Agent Skills conformance
+
+`goskill validate` is the strict Agent Skills format validator. It reports
+stable `ASxxx` error codes for invalid `SKILL.md` frontmatter and name,
+description, compatibility, metadata, and `allowed-tools` conformance. It does
+not lint prose, check local links, or reject duplicate names. The embedded
+Agent Skills specification revision is shown by `goskill --version`; see
+[the conformance contract](docs/conformance.md) for the rule scope, pinned
+revision policy, and known `skills-ref` differences.
+
 ## Find options
 
 `goskill find` searches all enabled registries concurrently, deduplicates
