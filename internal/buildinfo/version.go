@@ -1,3 +1,3 @@
 package buildinfo
 
-var Version = "0.2.4" // x-release-please-version
+var Version = "0.2.5" // x-release-please-version
