@@ -12,6 +12,7 @@ Guidance for coding agents working on the Go `goskill` CLI.
 | --- | --- |
 | `goskill` | Show banner with available commands |
 | `goskill add <source>` | Install goskill from git repos, URLs, well-known endpoints, or local paths |
+| `goskill use <source>[@<skill>]` | Generate a one-shot skill prompt or launch an agent with it |
 | `goskill install` | Restore project skills from `skills-lock.json` |
 | `goskill experimental_sync` | Sync skills from `node_modules` into agent dirs |
 | `goskill list` | List installed skills |

@@ -73,6 +73,12 @@ func (a App) Run(args []string) error {
 			return err
 		}
 		return a.Add(src, opts)
+	case "use":
+		src, opts, err := parseUse(rest)
+		if err != nil {
+			return err
+		}
+		return a.Use(src, opts)
 	case "list", "ls":
 		return a.List(rest)
 	case "remove", "rm", "r":

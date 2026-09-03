@@ -71,6 +71,7 @@ func renderBanner() string {
 		selectorHintStyle.Render("The open agent skills ecosystem"),
 		selectorBar(),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("add"), "Install skills from a source"),
+		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("use"), "Use one skill without installing"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("list"), "List installed skills"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("remove"), "Remove installed skills"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("find"), "Search the skills API"),
@@ -83,9 +84,11 @@ func renderBanner() string {
 }
 
 func renderHelp() string {
+	commands := "add, use, list, remove, find, validate, check, update, init, " +
+		"install, experimental_sync"
 	return renderInfo("Usage",
 		selectorTitleStyle.Render("skills <command> [options]"),
-		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("commands:"), "add, list, remove, find, validate, check, update, init, install, experimental_sync"),
+		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("commands:"), commands),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("agents:"), "claude-code, codex, cursor"),
 	)
 }

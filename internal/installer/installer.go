@@ -71,6 +71,10 @@ func InstallSkill(skill skills.Skill, agent agents.Type, global bool, cwd string
 	return Result{Success: true, Path: agentDir, CanonicalPath: canonicalDir, Mode: Symlink}
 }
 
+func MaterializeSkill(skill skills.Skill, dest string) error {
+	return cleanAndCopy(skill, dest)
+}
+
 func IsInstalled(skillName string, agent agents.Type, global bool, cwd string) bool {
 	name := skills.SanitizeName(skillName)
 	base := agents.BaseDir(agent, global, cwd)

@@ -65,6 +65,7 @@ and pushes the current branch plus tag to `origin`.
 
 ```bash
 goskill add <source>
+goskill use <source>[@<skill>]
 goskill list
 goskill remove [skills...]
 goskill find <query>
@@ -120,6 +121,31 @@ Supported source types:
 | `--full-depth` | Search all subdirectories even when a root `SKILL.md` exists |
 
 When a source contains multiple skills and `--skill` is not supplied, `goskill add` prompts for a numbered selection. Use `--skill <name>` for scripted installs, `--skill '*'` to install all skills, or `-y` to accept all discovered skills non-interactively.
+
+## Use Without Installing
+
+`goskill use` resolves a source like `goskill add`, materializes exactly one
+skill in a temporary directory, and turns its `SKILL.md` into a prompt for a
+single agent invocation. It does not install the skill or update a lock file.
+
+```bash
+goskill use vercel-labs/agent-skills@web-design-guidelines | claude
+goskill use vercel-labs/agent-skills --skill web-design-guidelines
+goskill use vercel-labs/agent-skills@web-design-guidelines --agent codex
+```
+
+Without `--agent`, stdout contains only the generated prompt. The option
+`--agent claude-code` launches `claude` and `--agent codex` launches `codex`,
+with the prompt passed as the initial interactive request. If a source contains
+multiple skills, select one with the `@skill` suffix or `--skill`; `use` never
+chooses one arbitrarily.
+
+| Option | Description |
+| --- | --- |
+| `-s`, `--skill <skill>` | Select exactly one skill |
+| `-a`, `--agent <agent>` | Launch `claude-code` or `codex` interactively |
+| `--full-depth` | Search all nested directories, as with `add` |
+| `-h`, `--help` | Show command help |
 
 ## List
 
