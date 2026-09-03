@@ -3,9 +3,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from importlib import resources
 from pathlib import Path
-from typing import Sequence
 
 
 def _binary_path() -> Path:

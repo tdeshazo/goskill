@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestLoadBuiltinsPreservesDefaultPaths(t *testing.T) {
@@ -35,33 +37,34 @@ func TestLoadBuiltinsPreservesDefaultPaths(t *testing.T) {
 }
 
 func TestBuiltinDetectPathsArePlatformAware(t *testing.T) {
-	configs, err := parseConfigsWithTransform(builtins, "embedded built-ins", func(config Config) Config {
-		return builtinConfigForPlatform(config, "linux")
-	})
-	if err != nil {
+	var document struct {
+		Agents []Config `yaml:"agents"`
+	}
+	if err := yaml.Unmarshal(builtins, &document); err != nil {
 		t.Fatal(err)
 	}
 	var codex Config
-	for _, config := range configs {
+	for _, config := range document.Agents {
 		if config.Name == Codex {
 			codex = config
 			break
 		}
 	}
-	if !containsPath(codex.DetectPaths, "/etc/codex") {
-		t.Fatalf("Unix built-in probes = %v, want /etc/codex", codex.DetectPaths)
+	if codex.Name == "" {
+		t.Fatal("embedded built-ins do not define Codex")
 	}
 
-	windowsConfigs, err := parseConfigsWithTransform(builtins, "embedded built-ins", func(config Config) Config {
-		return builtinConfigForPlatform(config, "windows")
-	})
-	if err != nil {
+	linuxCodex := builtinConfigForPlatform(codex, "linux")
+	if !containsPath(linuxCodex.DetectPaths, "/etc/codex") {
+		t.Fatalf("Unix built-in probes = %v, want /etc/codex", linuxCodex.DetectPaths)
+	}
+
+	windowsCodex := builtinConfigForPlatform(codex, "windows")
+	if err := validateConfig(windowsCodex); err != nil {
 		t.Fatalf("Windows built-ins must validate: %v", err)
 	}
-	for _, config := range windowsConfigs {
-		if config.Name == Codex && containsPath(config.DetectPaths, "/etc/codex") {
-			t.Fatalf("Windows built-in probes = %v, must not include POSIX /etc/codex", config.DetectPaths)
-		}
+	if containsPath(windowsCodex.DetectPaths, "/etc/codex") {
+		t.Fatalf("Windows built-in probes = %v, must not include POSIX /etc/codex", windowsCodex.DetectPaths)
 	}
 }
 
