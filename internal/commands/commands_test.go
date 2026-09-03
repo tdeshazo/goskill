@@ -51,6 +51,12 @@ func TestBufferedOutputStripsANSIEscapes(t *testing.T) {
 	}
 }
 
+func TestBannerDescribesFederatedFind(t *testing.T) {
+	if !strings.Contains(renderBanner(), "Search federated skill registries") {
+		t.Fatalf("banner = %s", renderBanner())
+	}
+}
+
 func TestAddListRemoveLocalSkill(t *testing.T) {
 	project := t.TempDir()
 	source := makeSkill(t, t.TempDir(), "demo", "Demo skill")
@@ -361,6 +367,9 @@ func TestFindHelpUsesReleaseNamesAndDocumentsFlags(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("find help missing %q:\n%s", want, out.String())
 		}
+	}
+	if strings.Contains(renderHelp(), "experimental_sync") || !strings.Contains(renderHelp(), "sync") {
+		t.Fatalf("root help = %s", renderHelp())
 	}
 }
 

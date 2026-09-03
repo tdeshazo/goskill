@@ -75,7 +75,8 @@ func renderBanner() string {
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("use"), "Use one skill without installing"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("list"), "List installed skills"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("remove"), "Remove installed skills"),
-		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("find"), "Search the skills API"),
+		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("find"), "Search federated skill registries"),
+		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("agent"), "Inspect configured agent definitions"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("validate"), "Validate SKILL.md files"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("check"), "Check locked skills for updates"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("update"), "Update locked skills"),
@@ -85,12 +86,12 @@ func renderBanner() string {
 }
 
 func renderHelp() string {
-	commands := "add, use, list, remove, find, validate, check, update, init, " +
-		"install, experimental_sync"
+	commands := "add, use, list, remove, find, agent, validate, check, update, init, " +
+		"install, sync"
 	return renderInfo("Usage",
-		selectorTitleStyle.Render("skills <command> [options]"),
+		selectorTitleStyle.Render("goskill <command> [options]"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("commands:"), commands),
-		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("agents:"), "claude-code, codex, cursor"),
+		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("agents:"), "run goskill agent list"),
 	)
 }
 

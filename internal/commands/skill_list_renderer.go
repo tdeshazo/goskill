@@ -8,7 +8,7 @@ import (
 	"github.com/tdeshazo/goskill/internal/installer"
 )
 
-func renderSkillList(list []installer.Installed, cwd string) string {
+func renderSkillList(list []installer.Installed, cwd string, registry *agents.Registry) string {
 	lines := []string{
 		selectorActiveStyle.Render("◆") + "  " + selectorTitleStyle.Render("Installed skills"),
 		selectorBar(),
@@ -33,15 +33,15 @@ func renderSkillList(list []installer.Installed, cwd string) string {
 			lines = append(lines, selectorGroupLine(titleCase(item.Scope), 88))
 			lastScope = item.Scope
 		}
-		lines = append(lines, renderSkillListItem(item, cwd)...)
+		lines = append(lines, renderSkillListItem(item, cwd, registry)...)
 	}
 
 	lines = append(lines, selectorBarStyle.Render("└"))
 	return strings.Join(lines, "\n") + "\n"
 }
 
-func renderSkillListItem(item installer.Installed, cwd string) []string {
-	agentsText := installedAgentsText(item.Agents)
+func renderSkillListItem(item installer.Installed, cwd string, registry *agents.Registry) []string {
+	agentsText := installedAgentsText(item.Agents, registry)
 	lines := []string{
 		fmt.Sprintf("%s %s %s", selectorBar(), selectorSelected.Render("●"), selectorTitleStyle.Render(item.Name)),
 	}
@@ -55,10 +55,10 @@ func renderSkillListItem(item installer.Installed, cwd string) []string {
 	return lines
 }
 
-func installedAgentsText(installed []agents.Type) string {
+func installedAgentsText(installed []agents.Type, registry *agents.Registry) string {
 	names := make([]string, 0, len(installed))
 	for _, agent := range installed {
-		names = append(names, agents.Display(agent))
+		names = append(names, registry.Display(agent))
 	}
 	return strings.Join(names, ", ")
 }

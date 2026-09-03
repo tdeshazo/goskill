@@ -37,11 +37,19 @@ type App struct {
 	Stdout  io.Writer
 	Stderr  io.Writer
 	Cwd     string
+	Agents  *agents.Registry
 }
 
 func New(version string) App {
 	cwd, _ := os.Getwd()
 	return App{Version: version, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Cwd: cwd}
+}
+
+func (a App) agentRegistry() (*agents.Registry, error) {
+	if a.Agents != nil {
+		return a.Agents, nil
+	}
+	return agents.Load(agents.LoadOptions{})
 }
 
 type AddOptions struct {
@@ -96,6 +104,8 @@ func (a App) Run(args []string) error {
 			return err
 		}
 		return a.Use(src, opts)
+	case "agent":
+		return a.Agent(rest)
 	case "list", "ls":
 		return a.List(rest)
 	case "remove", "rm", "r":
@@ -110,9 +120,9 @@ func (a App) Run(args []string) error {
 		return a.Validate(rest)
 	case "init":
 		return a.Init(rest)
-	case "install", "i", "experimental_install":
+	case "install", "i", "experimental_install": // experimental_install is a legacy alias.
 		return a.InstallFromLock(rest)
-	case "experimental_sync":
+	case "sync", "experimental_sync": // experimental_sync is a legacy alias.
 		return a.Sync(rest)
 	case "check":
 		return a.Check(rest, false)
@@ -137,12 +147,16 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 	if opts.Copy {
 		mode = installer.Copy
 	}
-	targets, err := a.resolveAgents(opts.Agent)
+	registry, err := a.agentRegistry()
+	if err != nil {
+		return err
+	}
+	targets, err := a.resolveAgents(registry, opts.Agent)
 	if err != nil {
 		return err
 	}
 	if len(targets) == 0 {
-		targets = agents.DefaultTargets(a.Cwd)
+		targets = registry.DefaultTargets(a.Cwd)
 	}
 	var installed []string
 	for _, rawSource := range srcArgs {
@@ -161,7 +175,7 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 			a.writeOut(renderSkillDiscoveryList(resolved.skills, "Discovered skills"))
 			continue
 		}
-		selected, err := a.selectSkills(resolved.skills, skillSelectorSourceLabel(parsed, rawSource, a.Cwd), opts, targets, mode)
+		selected, err := a.selectSkills(resolved.skills, skillSelectorSourceLabel(parsed, rawSource, a.Cwd), opts, targets, mode, registry)
 		if err != nil {
 			return err
 		}
@@ -172,6 +186,7 @@ func (a App) Add(srcArgs []string, opts AddOptions) error {
 			targets:   targets,
 			global:    opts.Global,
 			mode:      mode,
+			registry:  registry,
 		})
 		if err != nil {
 			return err
@@ -191,6 +206,7 @@ type addInstallContext struct {
 	targets   []agents.Type
 	global    bool
 	mode      installer.Mode
+	registry  *agents.Registry
 }
 
 func (a App) installSelectedSkills(selected []skills.Skill, ctx addInstallContext) ([]string, error) {
@@ -207,7 +223,7 @@ func (a App) installSelectedSkills(selected []skills.Skill, ctx addInstallContex
 
 func (a App) installSkillForTargets(skill skills.Skill, ctx addInstallContext) error {
 	for _, agent := range ctx.targets {
-		result := installer.InstallSkill(skill, agent, ctx.global, a.Cwd, ctx.mode)
+		result := installer.InstallSkill(ctx.registry, skill, agent, ctx.global, a.Cwd, ctx.mode)
 		if !result.Success {
 			return fmt.Errorf("failed to install %s for %s: %w", skill.Name, agent, result.Err)
 		}
@@ -233,20 +249,20 @@ func (a App) recordInstalledSkill(skill skills.Skill, ctx addInstallContext) {
 		Ref:          ctx.parsed.Ref,
 		SourceType:   string(ctx.parsed.Type),
 		SkillPath:    ctx.resolved.skillPath(skill),
-		ComputedHash: a.installedSkillHash(skill, ctx.resolved),
+		ComputedHash: a.installedSkillHash(skill, ctx.resolved, ctx.registry),
 	})
 }
 
-func (a App) installedSkillHash(skill skills.Skill, resolved resolvedSkills) string {
+func (a App) installedSkillHash(skill skills.Skill, resolved resolvedSkills, registry *agents.Registry) string {
 	if hash := resolved.folderHash(skill); hash != "" {
 		return hash
 	}
-	installDir := installer.CanonicalPath(skill.Name, false, a.Cwd)
+	installDir := installer.CanonicalPath(registry, skill.Name, false, a.Cwd)
 	hash, _ := skills.FolderHash(installDir)
 	return hash
 }
 
-func (a App) selectSkills(discovered []skills.Skill, source string, opts AddOptions, targets []agents.Type, mode installer.Mode) ([]skills.Skill, error) {
+func (a App) selectSkills(discovered []skills.Skill, source string, opts AddOptions, targets []agents.Type, mode installer.Mode, registry *agents.Registry) ([]skills.Skill, error) {
 	if len(discovered) == 0 {
 		return nil, fmt.Errorf("no skills found")
 	}
@@ -264,7 +280,7 @@ func (a App) selectSkills(discovered []skills.Skill, source string, opts AddOpti
 		return nil, fmt.Errorf("multiple skills found; specify one or more with --skill")
 	}
 	if a.canUseInteractiveSelector() {
-		selected, err := a.selectSkillsInteractive(discovered, source, opts, targets, mode)
+		selected, err := a.selectSkillsInteractive(discovered, source, opts, targets, mode, registry)
 		if err == nil {
 			return selected, nil
 		}
@@ -365,11 +381,15 @@ func (a App) List(args []string) error {
 			}
 		}
 	}
-	filter, invalid := agents.Validate(agentNames)
+	registry, err := a.agentRegistry()
+	if err != nil {
+		return err
+	}
+	filter, invalid := registry.Validate(agentNames)
 	if len(invalid) > 0 {
 		return fmt.Errorf("invalid agents: %s", strings.Join(invalid, ", "))
 	}
-	list, err := installer.List(global, filter, a.Cwd)
+	list, err := installer.List(registry, global, filter, a.Cwd)
 	if err != nil {
 		return err
 	}
@@ -390,7 +410,7 @@ func (a App) List(args []string) error {
 		for _, item := range list {
 			var names []string
 			for _, agent := range item.Agents {
-				names = append(names, agents.Display(agent))
+				names = append(names, registry.Display(agent))
 			}
 			out = append(out, outSkill{Name: item.Name, Path: item.CanonicalPath, Scope: item.Scope, Agents: names})
 		}
@@ -398,7 +418,7 @@ func (a App) List(args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
 	}
-	a.writeOut(renderSkillList(list, a.Cwd))
+	a.writeOut(renderSkillList(list, a.Cwd, registry))
 	return nil
 }
 
@@ -414,15 +434,19 @@ func listScopeOrder(scope string) int {
 }
 
 func (a App) Remove(skillNames []string, opts RemoveOptions) error {
-	targets, err := a.resolveAgents(opts.Agent)
+	registry, err := a.agentRegistry()
+	if err != nil {
+		return err
+	}
+	targets, err := a.resolveAgents(registry, opts.Agent)
 	if err != nil {
 		return err
 	}
 	if len(targets) == 0 {
-		targets = agents.Ordered()
+		targets = registry.Ordered()
 	}
 	if opts.All || len(skillNames) == 0 {
-		list, err := installer.List(&opts.Global, targets, a.Cwd)
+		list, err := installer.List(registry, &opts.Global, targets, a.Cwd)
 		if err != nil {
 			return err
 		}
@@ -435,7 +459,7 @@ func (a App) Remove(skillNames []string, opts RemoveOptions) error {
 		return nil
 	}
 	for _, name := range skillNames {
-		if err := installer.Remove(name, targets, opts.Global, a.Cwd); err != nil {
+		if err := installer.Remove(registry, name, targets, opts.Global, a.Cwd); err != nil {
 			return err
 		}
 		if opts.Global {
@@ -810,12 +834,16 @@ func (a App) InstallFromLock(args []string) error {
 
 func (a App) Sync(args []string) error {
 	opts := parseSync(args)
-	targets, err := a.resolveAgents(opts.Agent)
+	registry, err := a.agentRegistry()
+	if err != nil {
+		return err
+	}
+	targets, err := a.resolveAgents(registry, opts.Agent)
 	if err != nil {
 		return err
 	}
 	if len(targets) == 0 {
-		targets = []agents.Type{agents.Codex, agents.Cursor}
+		targets = registry.DefaultTargets(a.Cwd)
 	}
 	discovered := discoverNodeModuleSkills(a.Cwd)
 	if len(discovered) == 0 {
@@ -836,7 +864,7 @@ func (a App) Sync(args []string) error {
 	}
 	for _, skill := range toInstall {
 		for _, agent := range targets {
-			result := installer.InstallSkill(skill.Skill, agent, false, a.Cwd, installer.Symlink)
+			result := installer.InstallSkill(registry, skill.Skill, agent, false, a.Cwd, installer.Symlink)
 			if !result.Success {
 				return result.Err
 			}
@@ -1059,12 +1087,21 @@ func skillsWithRepoPaths(list []skills.Skill, basePath string) []skills.Skill {
 	return out
 }
 
-func (a App) resolveAgents(names []string) ([]agents.Type, error) {
-	targets, invalid := agents.Validate(names)
+func (a App) resolveAgents(registry *agents.Registry, names []string) ([]agents.Type, error) {
+	targets, invalid := registry.Validate(names)
 	if len(invalid) > 0 {
-		return nil, fmt.Errorf("invalid agents: %s (valid: claude-code, codex, cursor)", strings.Join(invalid, ", "))
+		return nil, fmt.Errorf("invalid agents: %s (valid: %s)", strings.Join(invalid, ", "), strings.Join(agentNames(registry), ", "))
 	}
 	return targets, nil
+}
+
+func agentNames(registry *agents.Registry) []string {
+	types := registry.Ordered()
+	names := make([]string, len(types))
+	for i, agent := range types {
+		names[i] = string(agent)
+	}
+	return names
 }
 
 func parseAdd(args []string) ([]string, AddOptions, error) {

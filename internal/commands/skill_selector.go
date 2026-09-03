@@ -53,10 +53,11 @@ type skillSelectionModel struct {
 }
 
 type selectorInstallContext struct {
-	targets []agents.Type
-	global  bool
-	cwd     string
-	mode    installer.Mode
+	targets  []agents.Type
+	global   bool
+	cwd      string
+	mode     installer.Mode
+	registry *agents.Registry
 }
 
 func (a App) canUseInteractiveSelector() bool {
@@ -68,12 +69,13 @@ func (a App) canUseInteractiveSelector() bool {
 	return ok && stdout == os.Stdout && isTerminalFile(stdout)
 }
 
-func (a App) selectSkillsInteractive(discovered []skills.Skill, source string, opts AddOptions, targets []agents.Type, mode installer.Mode) ([]skills.Skill, error) {
+func (a App) selectSkillsInteractive(discovered []skills.Skill, source string, opts AddOptions, targets []agents.Type, mode installer.Mode, registry *agents.Registry) ([]skills.Skill, error) {
 	model := newSkillSelectionModel(discovered, source, selectorInstallContext{
-		targets: targets,
-		global:  opts.Global,
-		cwd:     a.Cwd,
-		mode:    mode,
+		targets:  targets,
+		global:   opts.Global,
+		cwd:      a.Cwd,
+		mode:     mode,
+		registry: registry,
 	})
 	result, err := tea.NewProgram(model).Run()
 	if err != nil {
@@ -319,6 +321,10 @@ func (m skillSelectionModel) renderSelectedSummaryLines() []string {
 }
 
 func (m skillSelectionModel) renderSubmitted() string {
+	registry := m.install.registry
+	if registry == nil {
+		registry, _ = agents.Load(agents.LoadOptions{})
+	}
 	names := m.selectedNames()
 	lines := []string{
 		selectorSuccessStyle.Render("◇") + "  " + selectorTitleStyle.Render("Select skills to install"),
@@ -335,11 +341,15 @@ func (m skillSelectionModel) renderSubmitted() string {
 			fmt.Sprintf("  %s %s", selectorHintStyle.Render("scope:"), scopeLabel(m.install.global)),
 			fmt.Sprintf("  %s %s", selectorHintStyle.Render("mode:"), m.install.mode),
 		)
-		if m.install.mode != installer.Copy {
-			lines = append(lines, fmt.Sprintf("  %s %s", selectorHintStyle.Render("canonical:"), shortSelectionPath(installer.CanonicalPath(skill.Name, m.install.global, m.install.cwd))))
+		if m.install.mode != installer.Copy && registry != nil {
+			lines = append(lines, fmt.Sprintf("  %s %s", selectorHintStyle.Render("canonical:"), shortSelectionPath(installer.CanonicalPath(registry, skill.Name, m.install.global, m.install.cwd))))
 		}
 		for _, target := range m.install.targets {
-			lines = append(lines, fmt.Sprintf("  %s %s", selectorSuccessStyle.Render(agents.Display(target)+":"), shortSelectionPath(installer.InstallPath(skill.Name, target, m.install.global, m.install.cwd))))
+			if registry == nil {
+				lines = append(lines, fmt.Sprintf("  %s", selectorSuccessStyle.Render(string(target)+":")))
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s", selectorSuccessStyle.Render(registry.Display(target)+":"), shortSelectionPath(installer.InstallPath(registry, skill.Name, target, m.install.global, m.install.cwd))))
 		}
 		if skill.Path != "" {
 			lines = append(lines, fmt.Sprintf("  %s %s", selectorHintStyle.Render("source:"), shortSelectionPath(skill.Path)))

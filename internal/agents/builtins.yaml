@@ -1,0 +1,33 @@
+version: 1
+agents:
+  - id: claude-code
+    display_name: Claude Code
+    project_skills_dir: .claude/skills
+    global_skills_dir: ~/.claude/skills
+    global_config_env: CLAUDE_CONFIG_DIR
+    global_config_suffix: skills
+    project_guard_dir: .claude
+    detect_paths:
+      - ~/.claude
+      - "{project}/.claude"
+    command: claude
+  - id: codex
+    display_name: Codex
+    project_skills_dir: .agents/skills
+    global_skills_dir: ~/.codex/skills
+    global_config_env: CODEX_HOME
+    global_config_suffix: skills
+    universal_project: true
+    detect_paths:
+      - ~/.codex
+      - "{project}/.agents"
+      - /etc/codex
+    command: codex
+  - id: cursor
+    display_name: Cursor
+    project_skills_dir: .agents/skills
+    global_skills_dir: ~/.cursor/skills
+    universal_project: true
+    detect_paths:
+      - ~/.cursor
+      - "{project}/.agents"

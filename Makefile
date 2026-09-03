@@ -2,7 +2,7 @@ SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 
 PYPROJECT := pyproject.toml
-GO_MAIN := cmd/goskill/main.go
+GO_VERSION := internal/buildinfo/version.go
 REMOTE ?= origin
 BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 CURRENT_VERSION := $(shell awk -F '"' '/^version = / { print $$2; exit }' $(PYPROJECT))
@@ -27,13 +27,13 @@ version:
 
 check-version:
 	@py_version="$$(awk -F '"' '/^version = / { print $$2; exit }' "$(PYPROJECT)")"; \
-	go_version="$$(awk -F '"' '/^var version = / { print $$2; exit }' "$(GO_MAIN)")"; \
+	go_version="$$(awk -F '"' '/^var Version = / { print $$2; exit }' "$(GO_VERSION)")"; \
 	if [[ -z "$$py_version" || -z "$$go_version" ]]; then \
-		echo "could not read version from $(PYPROJECT) or $(GO_MAIN)" >&2; \
+		echo "could not read version from $(PYPROJECT) or $(GO_VERSION)" >&2; \
 		exit 1; \
 	fi; \
 	if [[ "$$py_version" != "$$go_version" ]]; then \
-		echo "version mismatch: $(PYPROJECT)=$$py_version $(GO_MAIN)=$$go_version" >&2; \
+		echo "version mismatch: $(PYPROJECT)=$$py_version $(GO_VERSION)=$$go_version" >&2; \
 		exit 1; \
 	fi; \
 	printf 'version %s\n' "$$py_version"
@@ -43,7 +43,7 @@ lint:
 
 set-version: require-version
 	@perl -0pi -e 's/^version = "[^"]+"/version = "$(VERSION)"/m' "$(PYPROJECT)"
-	@perl -0pi -e 's/^var version = "[^"]+"/var version = "$(VERSION)"/m' "$(GO_MAIN)"
+	@perl -0pi -e 's/^var Version = "[^"]+"/var Version = "$(VERSION)"/m' "$(GO_VERSION)"
 	@$(MAKE) check-version
 
 ensure-clean:
@@ -67,7 +67,7 @@ ensure-new-tag: require-version check-version ensure-branch
 
 release-commit: require-version ensure-clean lint
 	@$(MAKE) set-version VERSION="$(VERSION)"
-	@git add "$(PYPROJECT)" "$(GO_MAIN)"
+	@git add "$(PYPROJECT)" "$(GO_VERSION)"
 	@git commit -m "Release $(TAG)"
 
 release-tag: ensure-new-tag

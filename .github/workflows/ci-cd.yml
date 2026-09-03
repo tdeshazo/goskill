@@ -41,7 +41,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          test -z "$(gofmt -l cmd internal)"
+          test -z "$(gofmt -l *.go cmd internal)"
 
       - name: Vet
         run: go vet ./...
@@ -56,7 +56,7 @@ jobs:
           go build -trimpath \
             -ldflags "-X ${MODULE}/internal/commands.defaultUpdateRepo=${GITHUB_REPOSITORY}" \
             -o goskill \
-            ./cmd/goskill
+            .
 
   python:
     name: Python checks
@@ -115,9 +115,9 @@ jobs:
           for GOARCH in amd64 arm64; do
             CGO_ENABLED=0 GOOS=linux GOARCH="${GOARCH}" \
               go build -trimpath \
-                -ldflags "-s -w -X main.version=${VERSION} -X ${MODULE}/internal/commands.defaultUpdateRepo=${GITHUB_REPOSITORY}" \
+                -ldflags "-s -w -X ${MODULE}/internal/buildinfo.Version=${VERSION} -X ${MODULE}/internal/commands.defaultUpdateRepo=${GITHUB_REPOSITORY}" \
                 -o "dist/goskill-linux-${GOARCH}" \
-                ./cmd/goskill
+                .
           done
 
       - name: Build Linux wheel
@@ -174,9 +174,9 @@ jobs:
           for GOARCH in amd64 arm64; do
             CGO_ENABLED=0 GOOS=darwin GOARCH="${GOARCH}" \
               go build -trimpath \
-                -ldflags "-s -w -X main.version=${VERSION} -X ${MODULE}/internal/commands.defaultUpdateRepo=${GITHUB_REPOSITORY}" \
+                -ldflags "-s -w -X ${MODULE}/internal/buildinfo.Version=${VERSION} -X ${MODULE}/internal/commands.defaultUpdateRepo=${GITHUB_REPOSITORY}" \
                 -o "dist/goskill-darwin-${GOARCH}" \
-                ./cmd/goskill
+                .
           done
 
       - name: Build macOS wheel
@@ -230,11 +230,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           $version = $env:GITHUB_REF_NAME -replace '^v', ''
           $module = go list -m
-          $ldflags = "-s -w -X main.version=$version -X $module/internal/commands.defaultUpdateRepo=$env:GITHUB_REPOSITORY"
+          $ldflags = "-s -w -X $module/internal/buildinfo.Version=$version -X $module/internal/commands.defaultUpdateRepo=$env:GITHUB_REPOSITORY"
           $env:CGO_ENABLED = "0"
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
-          go build -trimpath -ldflags "$ldflags" -o "dist/goskill-windows-amd64.exe" ./cmd/goskill
+          go build -trimpath -ldflags "$ldflags" -o "dist/goskill-windows-amd64.exe" .
 
       - name: Build Windows wheel
         run: python -m build --wheel

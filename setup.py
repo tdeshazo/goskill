@@ -52,7 +52,7 @@ class build_py(_build_py):
 
         version = self.distribution.get_version()
         ldflags = (
-            f"-s -w -X main.version={version} "
+            f"-s -w -X {_go_module()}/internal/buildinfo.Version={version} "
             f"-X {_go_module()}/internal/commands.defaultUpdateRepo={_update_repo()}"
         )
         subprocess.check_call(
@@ -64,7 +64,7 @@ class build_py(_build_py):
                 ldflags,
                 "-o",
                 str(output),
-                "./cmd/goskill",
+                ".",
             ],
             cwd=ROOT,
         )

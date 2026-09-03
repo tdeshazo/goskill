@@ -38,11 +38,14 @@ type Installed struct {
 	Agents        []agents.Type `json:"agents"`
 }
 
-func InstallSkill(skill skills.Skill, agent agents.Type, global bool, cwd string, mode Mode) Result {
+func InstallSkill(registry *agents.Registry, skill skills.Skill, agent agents.Type, global bool, cwd string, mode Mode) Result {
 	name := skills.SanitizeName(skill.Name)
-	canonicalBase := agents.CanonicalSkillsDir(global, cwd)
+	canonicalBase := registry.CanonicalSkillsDir(global, cwd)
 	canonicalDir := filepath.Join(canonicalBase, name)
-	agentBase := agents.BaseDir(agent, global, cwd)
+	agentBase, err := registry.BaseDir(agent, global, cwd)
+	if err != nil {
+		return Result{Success: false, Mode: mode, Err: err}
+	}
 	agentDir := filepath.Join(agentBase, name)
 	if !skills.PathSafe(canonicalBase, canonicalDir) || !skills.PathSafe(agentBase, agentDir) {
 		return Result{Success: false, Path: agentDir, Mode: mode, Err: errors.New("invalid skill name: potential path traversal detected")}
@@ -57,8 +60,9 @@ func InstallSkill(skill skills.Skill, agent agents.Type, global bool, cwd string
 	if samePath(canonicalDir, agentDir) {
 		return Result{Success: true, Path: canonicalDir, CanonicalPath: canonicalDir, Mode: Symlink}
 	}
-	if !global && agent == agents.ClaudeCode {
-		if _, err := os.Stat(filepath.Join(cwd, ".claude")); err != nil {
+	if !global {
+		entry, _ := registry.Get(agent)
+		if entry.Config.ProjectGuardDir != "" && !registry.HasProjectGuard(agent, cwd) {
 			return Result{Success: true, Path: canonicalDir, CanonicalPath: canonicalDir, Mode: Symlink, Skipped: true}
 		}
 	}
@@ -75,26 +79,33 @@ func MaterializeSkill(skill skills.Skill, dest string) error {
 	return cleanAndCopy(skill, dest)
 }
 
-func IsInstalled(skillName string, agent agents.Type, global bool, cwd string) bool {
+func IsInstalled(registry *agents.Registry, skillName string, agent agents.Type, global bool, cwd string) bool {
 	name := skills.SanitizeName(skillName)
-	base := agents.BaseDir(agent, global, cwd)
+	base, err := registry.BaseDir(agent, global, cwd)
+	if err != nil {
+		return false
+	}
 	target := filepath.Join(base, name)
 	if !skills.PathSafe(base, target) {
 		return false
 	}
-	_, err := os.Stat(target)
+	_, err = os.Stat(target)
 	return err == nil
 }
 
-func InstallPath(skillName string, agent agents.Type, global bool, cwd string) string {
-	return filepath.Join(agents.BaseDir(agent, global, cwd), skills.SanitizeName(skillName))
+func InstallPath(registry *agents.Registry, skillName string, agent agents.Type, global bool, cwd string) string {
+	base, err := registry.BaseDir(agent, global, cwd)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(base, skills.SanitizeName(skillName))
 }
 
-func CanonicalPath(skillName string, global bool, cwd string) string {
-	return filepath.Join(agents.CanonicalSkillsDir(global, cwd), skills.SanitizeName(skillName))
+func CanonicalPath(registry *agents.Registry, skillName string, global bool, cwd string) string {
+	return filepath.Join(registry.CanonicalSkillsDir(global, cwd), skills.SanitizeName(skillName))
 }
 
-func List(global *bool, filter []agents.Type, cwd string) ([]Installed, error) {
+func List(registry *agents.Registry, global *bool, filter []agents.Type, cwd string) ([]Installed, error) {
 	var scopes []bool
 	if global == nil {
 		scopes = []bool{false, true}
@@ -103,9 +114,9 @@ func List(global *bool, filter []agents.Type, cwd string) ([]Installed, error) {
 	}
 	checkAgents := filter
 	if len(checkAgents) == 0 {
-		checkAgents = agents.DetectInstalled(cwd)
+		checkAgents = registry.DetectInstalled(cwd)
 		if len(checkAgents) == 0 {
-			checkAgents = agents.Ordered()
+			checkAgents = registry.Ordered()
 		}
 	}
 	byKey := map[string]*Installed{}
@@ -117,9 +128,12 @@ func List(global *bool, filter []agents.Type, cwd string) ([]Installed, error) {
 		dirs := []struct {
 			path  string
 			agent agents.Type
-		}{{path: agents.CanonicalSkillsDir(isGlobal, cwd)}}
-		for _, agent := range agents.Ordered() {
-			base := agents.BaseDir(agent, isGlobal, cwd)
+		}{{path: registry.CanonicalSkillsDir(isGlobal, cwd)}}
+		for _, agent := range registry.Ordered() {
+			base, err := registry.BaseDir(agent, isGlobal, cwd)
+			if err != nil {
+				continue
+			}
 			if !containsDir(dirs, base, isGlobal) {
 				if _, err := os.Stat(base); err == nil {
 					dirs = append(dirs, struct {
@@ -153,7 +167,7 @@ func List(global *bool, filter []agents.Type, cwd string) ([]Installed, error) {
 					addAgent(item, dir.agent, checkAgents)
 				} else {
 					for _, agent := range checkAgents {
-						if IsInstalled(skill.Name, agent, isGlobal, cwd) {
+						if IsInstalled(registry, skill.Name, agent, isGlobal, cwd) {
 							addAgent(item, agent, checkAgents)
 						}
 					}
@@ -168,17 +182,10 @@ func List(global *bool, filter []agents.Type, cwd string) ([]Installed, error) {
 	return out, nil
 }
 
-func Remove(skillName string, targetAgents []agents.Type, global bool, cwd string) error {
-	canonical := CanonicalPath(skillName, global, cwd)
-	name := skills.SanitizeName(skillName)
+func Remove(registry *agents.Registry, skillName string, targetAgents []agents.Type, global bool, cwd string) error {
+	canonical := CanonicalPath(registry, skillName, global, cwd)
 	for _, agent := range targetAgents {
-		paths := map[string]bool{InstallPath(skillName, agent, global, cwd): true}
-		cfg, _ := agents.Get(agent)
-		if global {
-			paths[filepath.Join(cfg.GlobalSkillsDir, name)] = true
-		} else {
-			paths[filepath.Join(cwd, cfg.SkillsDir, name)] = true
-		}
+		paths := map[string]bool{InstallPath(registry, skillName, agent, global, cwd): true}
 		for path := range paths {
 			if samePath(path, canonical) {
 				continue

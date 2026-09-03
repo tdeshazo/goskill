@@ -2,7 +2,8 @@
 
 Native Go CLI for the open agent skills ecosystem.
 
-This rewrite supports three targets:
+Built-in agent definitions support three targets. They can be extended or
+overridden with declarative user definitions:
 
 | Agent | `--agent` | Project path | Global path |
 | --- | --- | --- | --- |
@@ -14,10 +15,65 @@ Project installs keep a canonical copy in `.agents/skills/<skill>`. Codex and Cu
 
 Global installs keep a canonical copy in `~/.agents/skills/<skill>` and link/copy into each selected agent's global path.
 
+## Agent registry
+
+Agent definitions are versioned YAML. Built-ins for Claude Code, Codex, and
+Cursor are embedded in the executable. User files in
+`goskill/agents/*.yaml` below the platform user-config directory are loaded in
+lexical filename order and override a built-in with the same `id`. On Linux,
+the default directory is `$XDG_CONFIG_HOME/goskill/agents` (or
+`~/.config/goskill/agents`); macOS and Windows use Go's platform
+`UserConfigDir` locations. Two user files may not declare the same id.
+
+```yaml
+version: 1
+agents:
+  - id: opencode
+    display_name: OpenCode
+    project_skills_dir: .opencode/skills
+    global_skills_dir: ~/.opencode/skills
+    detect_paths:
+      - ~/.opencode
+      - "{project}/.opencode"
+    command: opencode
+```
+
+All fields other than `id`, `display_name`, `project_skills_dir`, and
+`global_skills_dir` are optional. Paths are expanded directly without a shell.
+
+| Field | Type / default | Constraint and behavior |
+| --- | --- | --- |
+| `id` | required string | Lowercase letters, digits, and hyphens; identifies the agent. |
+| `display_name` | required string | Human-readable agent name. |
+| `project_skills_dir` | required relative path | Must remain below the project directory. |
+| `global_skills_dir` | required absolute or `~/` path | Used for global installs unless `global_config_env` is set. |
+| `global_config_env` | optional environment-variable name | When non-empty, its configured directory overrides `global_skills_dir` for global installs. |
+| `global_config_suffix` | optional relative path, default empty | Appended to the directory from `global_config_env`; it must remain relative. |
+| `detect_paths` | optional list, default empty | Each path is absolute, `~/`, `{project}`, or `{project}/...`; existing paths identify installed agents. |
+| `universal_project` | boolean, default `false` | Uses the canonical `.agents/skills` project location instead of `project_skills_dir`. |
+| `project_guard_dir` | optional relative path, default empty | Makes the project target apply only when this project directory exists. |
+| `command` | optional string | Required by `goskill use --agent <id>` to launch the agent. |
+
+User definitions take precedence over built-ins with the same `id`; duplicate
+user `id` values are rejected.
+
+```bash
+goskill agent list
+goskill agent show opencode
+goskill agent validate ~/.config/goskill/agents/opencode.yaml
+goskill add owner/repo --agent opencode
+```
+
 ## Build
 
 ```bash
-go build -o goskill ./cmd/goskill
+go install github.com/tdeshazo/goskill@latest
+```
+
+To build the current checkout instead:
+
+```bash
+go build -o goskill .
 ```
 
 ## Python Wheel
@@ -77,12 +133,18 @@ goskill use <source>[@<skill>]
 goskill list
 goskill remove [skills...]
 goskill find <query>
+goskill find --deep <query> # Also search GitHub's long tail
+goskill find --refresh <query> # Refresh static catalogs before searching
+goskill find --verified --sort popular --provider skillmd <query>
+goskill find --json <query>
+goskill find --providers # Show built-in and configured optional registries
+goskill agent list
 goskill validate <skills>
 goskill check
 goskill update [skills...]
 goskill init [name]
 goskill install
-goskill experimental_sync
+goskill sync
 ```
 
 Aliases:
@@ -90,7 +152,7 @@ Aliases:
 - `goskill a` for `add`
 - `goskill ls` for `list`
 - `goskill rm` or `goskill r` for `remove`
-- `goskill i` or `goskill experimental_install` for `install`
+- `goskill i` for `install`
 - `goskill upgrade` for `update`
 - `experimental_install` and `experimental_sync` remain accepted as legacy aliases
 
@@ -205,7 +267,7 @@ Supported source types:
 | Option | Description |
 | --- | --- |
 | `-g`, `--global` | Install globally |
-| `-a`, `--agent <agents...>` | Target `claude-code`, `codex`, `cursor`, or `*` |
+| `-a`, `--agent <agents...>` | Target a configured agent id, or `*` |
 | `-s`, `--skill <skills...>` | Install named skills, or `*` for all |
 | `-l`, `--list` | List available skills without installing |
 | `-y`, `--yes` | Non-interactive confirmation flag |
@@ -228,15 +290,16 @@ goskill use vercel-labs/agent-skills@web-design-guidelines --agent codex
 ```
 
 Without `--agent`, stdout contains only the generated prompt. The option
-`--agent claude-code` launches `claude` and `--agent codex` launches `codex`,
-with the prompt passed as the initial interactive request. If a source contains
+`--agent claude-code` launches `claude` and `--agent codex` launches `codex`;
+custom agents with a `command` are launched the same way, with the prompt
+passed as the initial interactive request. If a source contains
 multiple skills, select one with the `@skill` suffix or `--skill`; `use` never
 chooses one arbitrarily.
 
 | Option | Description |
 | --- | --- |
 | `-s`, `--skill <skill>` | Select exactly one skill |
-| `-a`, `--agent <agent>` | Launch `claude-code` or `codex` interactively |
+| `-a`, `--agent <agent>` | Launch one configured agent with a `command` interactively |
 | `--full-depth` | Search all nested directories, as with `add` |
 | `-h`, `--help` | Show command help |
 

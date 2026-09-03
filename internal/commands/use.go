@@ -53,7 +53,11 @@ func (a App) Use(rawSource string, opts UseOptions) error {
 	if rawSource == "" {
 		return errors.New("missing source\n\n" + useHelp())
 	}
-	if err := validateUseAgent(opts.Agent); err != nil {
+	registry, err := a.agentRegistry()
+	if err != nil {
+		return err
+	}
+	if err := validateUseAgentWithRegistry(registry, opts.Agent); err != nil {
 		return err
 	}
 
@@ -178,6 +182,14 @@ func parseUse(args []string) (string, UseOptions, error) {
 }
 
 func validateUseAgent(names []string) error {
+	registry, err := agents.Load(agents.LoadOptions{})
+	if err != nil {
+		return err
+	}
+	return validateUseAgentWithRegistry(registry, names)
+}
+
+func validateUseAgentWithRegistry(registry *agents.Registry, names []string) error {
 	if len(names) == 0 {
 		return nil
 	}
@@ -188,11 +200,11 @@ func validateUseAgent(names []string) error {
 	if name == "*" {
 		return errors.New("goskill use --agent does not support '*'; specify exactly one agent")
 	}
-	if !agents.IsValid(name) {
-		return fmt.Errorf("invalid agent: %s (valid: claude-code, codex, cursor)", name)
+	if !registry.IsValid(name) {
+		return fmt.Errorf("invalid agent: %s (valid: %s)", name, strings.Join(agentNames(registry), ", "))
 	}
-	if name == string(agents.Cursor) {
-		return errors.New("running Cursor is not supported yet; supported agents for goskill use: claude-code, codex")
+	if registry.Command(agents.Type(name)) == "" {
+		return fmt.Errorf("running %s is not supported yet; configure command to use it", registry.Display(agents.Type(name)))
 	}
 	return nil
 }
@@ -347,26 +359,25 @@ func buildUsePrompt(skill materializedUseSkill) string {
 }
 
 func (a App) launchUseAgent(agent agents.Type, prompt string) error {
-	command := ""
-	switch agent {
-	case agents.ClaudeCode:
-		command = "claude"
-	case agents.Codex:
-		command = "codex"
-	default:
-		return fmt.Errorf("running %s is not supported yet", agents.Display(agent))
+	registry, err := a.agentRegistry()
+	if err != nil {
+		return err
+	}
+	command := registry.Command(agent)
+	if command == "" {
+		return fmt.Errorf("running %s is not supported yet; configure command to use it", registry.Display(agent))
 	}
 	cmd := exec.Command(command, prompt)
 	cmd.Stdin = a.Stdin
 	cmd.Stdout = a.Stdout
 	cmd.Stderr = a.Stderr
 	cmd.Dir = a.Cwd
-	err := cmd.Run()
+	err = cmd.Run()
 	if err == nil {
 		return nil
 	}
 	if errors.Is(err, exec.ErrNotFound) {
-		return fmt.Errorf("could not launch %s: command not found: %s", agents.Display(agent), command)
+		return fmt.Errorf("could not launch %s: command not found: %s", registry.Display(agent), command)
 	}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
@@ -376,7 +387,7 @@ func (a App) launchUseAgent(agent agents.Type, prompt string) error {
 		}
 		return commandExitError{code: code}
 	}
-	return fmt.Errorf("launching %s: %w", agents.Display(agent), err)
+	return fmt.Errorf("launching %s: %w", registry.Display(agent), err)
 }
 
 func useHelp() string {
@@ -386,7 +397,7 @@ Generate a prompt for using one skill without installing it.
 
 Options:
   -s, --skill <skill>   Select the skill to use
-  -a, --agent <agent>   Start one supported agent interactively (claude-code, codex)
+  -a, --agent <agent>   Start one configured agent interactively
   --full-depth          Search nested directories like goskill add --full-depth
   -h, --help            Show this help message
 
