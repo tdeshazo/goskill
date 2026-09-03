@@ -198,6 +198,9 @@ Aliases:
 
 ## Agent Skills conformance
 
+See the [validation roadmap](ROADMAP.md) for completed foundations, planned
+work, and the profile boundaries.
+
 `goskill validate` defaults to the strict `spec` Agent Skills format validator.
 For that profile: Given the Agent Skills specification revision embedded in this binary, this directory conforms to every normative rule we implement from that specification. It does not claim to implement every possible upstream rule. It reports
 stable `ASxxx` error codes for invalid `SKILL.md` frontmatter and name,
