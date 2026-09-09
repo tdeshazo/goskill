@@ -134,6 +134,7 @@ func renderValidateHelp() string {
 	return renderInfo("Validate skills",
 		selectorTitleStyle.Render("goskill validate [options] <skills> | goskill validate [--profile <profile>] --version-info"),
 		"--profile <profile>   spec (default), recommended, or portable",
+		"                       recommended/portable also check local Markdown targets",
 		"--version-info        Write offline validator/spec/profile metadata",
 		"--format <format>     text (default), json, or sarif",
 		"--json                Alias for --format json",

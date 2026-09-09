@@ -677,7 +677,15 @@ func TestValidateHelpDocumentsMachineFormats(t *testing.T) {
 	if err := app.Run([]string{"validate", "--help"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"goskill validate", "--profile", "--version-info", "--format", "--json", "--sarif"} {
+	for _, want := range []string{
+		"goskill validate",
+		"--profile",
+		"recommended/portable also check local Markdown targets",
+		"--version-info",
+		"--format",
+		"--json",
+		"--sarif",
+	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("validate help missing %q:\n%s", want, out.String())
 		}
@@ -696,5 +704,48 @@ func TestValidateOperationalFailureDoesNotEmitPartialMachineOutput(t *testing.T)
 	}
 	if out.Len() != 0 {
 		t.Fatalf("operational failure emitted partial output: %q", out.String())
+	}
+}
+
+func TestRecommendedReferenceDiagnosticsUseCatalogMetadataInJSON(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "SKILL.md")
+	content := "---\nname: demo\ndescription: Demo skill\n---\n\nSee [missing](docs/missing.md).\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	app := App{Version: "test", Stdout: &out, Stderr: &bytes.Buffer{}, Cwd: root}
+	err := app.Run([]string{"validate", "--profile", "recommended", "--json", "demo"})
+	if code, ok := ExitCode(err); !ok || code != 1 {
+		t.Fatalf("ExitCode(%v) = %d, %v", err, code, ok)
+	}
+	if out.String() != terminal.StripEscapes(out.String()) {
+		t.Fatalf("JSON contains ANSI: %q", out.String())
+	}
+	var report validationReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+	if report.Profile != string(skills.ProfileRecommended) || report.Valid || report.Summary.Errors != 1 {
+		t.Fatalf("report summary = %#v", report)
+	}
+	if len(report.Diagnostics) != 1 ||
+		report.Diagnostics[0].Code != skills.RuleLocalReferenceMissing ||
+		report.Diagnostics[0].Severity != skills.SeverityError {
+		t.Fatalf("report diagnostics = %#v", report.Diagnostics)
+	}
+	found := false
+	for _, rule := range report.Rules {
+		if rule.Code == skills.RuleLocalReferenceMissing {
+			found = rule.Profile == skills.ProfileRecommended && rule.Severity == skills.SeverityError && rule.Rationale != ""
+		}
+	}
+	if !found {
+		t.Fatalf("report catalog omitted GS220 metadata: %#v", report.Rules)
 	}
 }

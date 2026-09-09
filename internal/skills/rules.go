@@ -108,6 +108,8 @@ const (
 	RuleMetadataValues         = "AS019"
 	RuleAllowedToolsType       = "AS020"
 	RuleSkillLineCount         = "GS210"
+	RuleLocalReferenceMissing  = "GS220"
+	RuleLocalReferenceEscape   = "GS221"
 	RuleSkillFilename          = "GP310"
 )
 
@@ -136,6 +138,20 @@ var specRuleCatalog = []Rule{
 
 var recommendedRuleCatalog = []Rule{
 	{Code: RuleSkillLineCount, Summary: "SKILL.md should be 500 lines or fewer", Severity: SeverityWarning, Profile: ProfileRecommended, Source: "https://agentskills.io/skill-creation/best-practices"},
+	{
+		Code:      RuleLocalReferenceMissing,
+		Summary:   "local Markdown references must resolve to existing targets",
+		Severity:  SeverityError,
+		Profile:   ProfileRecommended,
+		Rationale: "recommended local-reference integrity check; keep referenced files inside the skill and include every target",
+	},
+	{
+		Code:      RuleLocalReferenceEscape,
+		Summary:   "local Markdown references must stay within the skill directory",
+		Severity:  SeverityError,
+		Profile:   ProfileRecommended,
+		Rationale: "recommended path-integrity check; use relative targets that remain inside the skill directory and do not escape through symlinks",
+	},
 }
 
 var portableRuleCatalog = []Rule{

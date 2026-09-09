@@ -2,6 +2,7 @@ package skills
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -144,7 +145,116 @@ func profileDiagnostics(path, raw string, profile Profile) []Diagnostic {
 			fileLocation(),
 		))
 	}
+	diagnostics = append(diagnostics, validateLocalReferences(path, raw)...)
 	return diagnostics
+}
+
+func validateLocalReferences(path, raw string) []Diagnostic {
+	references := parseMarkdownReferences(raw)
+	if len(references) == 0 {
+		return nil
+	}
+	root, err := filepath.Abs(filepath.Dir(path))
+	if err != nil {
+		return nil
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		resolvedRoot = root
+	}
+
+	diagnostics := make([]Diagnostic, 0, len(references))
+	for _, reference := range references {
+		target, kind, ok := localReferenceTarget(root, reference.destination)
+		if !ok {
+			continue
+		}
+		switch kind {
+		case localReferenceEscape:
+			diagnostics = append(diagnostics, diagnosticAt(
+				RuleLocalReferenceEscape,
+				path,
+				fmt.Sprintf("local reference escapes the skill directory: %q", reference.destination),
+				sourceLocation{Line: reference.line, Column: reference.column},
+			))
+		case localReferenceMissing:
+			diagnostics = append(diagnostics, diagnosticAt(
+				RuleLocalReferenceMissing,
+				path,
+				fmt.Sprintf("local reference target does not exist: %q", reference.destination),
+				sourceLocation{Line: reference.line, Column: reference.column},
+			))
+		case localReferencePresent:
+			if resolved, resolveErr := filepath.EvalSymlinks(target); resolveErr == nil {
+				resolved, resolveErr = filepath.Abs(resolved)
+				if resolveErr == nil && !PathSafe(resolvedRoot, resolved) {
+					diagnostics = append(diagnostics, diagnosticAt(
+						RuleLocalReferenceEscape,
+						path,
+						fmt.Sprintf("local reference escapes the skill directory through a symlink: %q", reference.destination),
+						sourceLocation{Line: reference.line, Column: reference.column},
+					))
+				}
+			}
+		}
+	}
+	return diagnostics
+}
+
+type localReferenceKind uint8
+
+const (
+	localReferencePresent localReferenceKind = iota
+	localReferenceMissing
+	localReferenceEscape
+)
+
+func localReferenceTarget(root, destination string) (string, localReferenceKind, bool) {
+	destination = strings.TrimSpace(destination)
+	if destination == "" || strings.HasPrefix(destination, "#") || strings.HasPrefix(destination, "?") {
+		return "", 0, false
+	}
+	if strings.HasPrefix(destination, "//") {
+		return "", 0, false
+	}
+	if isAbsoluteReference(destination) {
+		return "", localReferenceEscape, true
+	}
+	parsed, err := url.Parse(destination)
+	if err != nil || parsed.Scheme != "" || parsed.Host != "" {
+		return "", 0, false
+	}
+	pathPart := parsed.Path
+	if pathPart == "" {
+		return "", 0, false
+	}
+	if isAbsoluteReference(pathPart) {
+		return "", localReferenceEscape, true
+	}
+	pathPart = strings.ReplaceAll(pathPart, `\`, "/")
+	target := filepath.Join(root, filepath.FromSlash(pathPart))
+	if !PathSafe(root, target) {
+		return "", localReferenceEscape, true
+	}
+	if _, err := os.Stat(target); err != nil {
+		return target, localReferenceMissing, true
+	}
+	return target, localReferencePresent, true
+}
+
+func isAbsoluteReference(destination string) bool {
+	if filepath.IsAbs(destination) || strings.HasPrefix(destination, "/") || strings.HasPrefix(destination, `\`) {
+		return true
+	}
+	if len(destination) < 2 {
+		return false
+	}
+	letter := destination[0]
+	isLetter := letter >= 'a' && letter <= 'z' || letter >= 'A' && letter <= 'Z'
+	if isLetter && destination[1] == ':' {
+		return true
+	}
+	return false
 }
 
 func skillLineCount(raw string) int {

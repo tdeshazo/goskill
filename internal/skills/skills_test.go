@@ -3,6 +3,7 @@ package skills
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -219,24 +220,180 @@ func TestRulesForProfileLayersDeterministically(t *testing.T) {
 		profile Profile
 		want    []string
 	}{
-		{profile: ProfileSpec, want: []string{RuleSkillMDRequired, RuleAllowedToolsType}},
-		{profile: ProfileRecommended, want: []string{RuleSkillMDRequired, RuleAllowedToolsType, RuleSkillLineCount}},
-		{profile: ProfilePortable, want: []string{RuleSkillMDRequired, RuleAllowedToolsType, RuleSkillLineCount, RuleSkillFilename}},
+		{profile: ProfileSpec, want: ruleCodes(specRuleCatalog...)},
+		{profile: ProfileRecommended, want: ruleCodes(append(specRuleCatalog, recommendedRuleCatalog...)...)},
+		{profile: ProfilePortable, want: ruleCodes(append(append(specRuleCatalog, recommendedRuleCatalog...), portableRuleCatalog...)...)},
 	}
 	for _, test := range tests {
 		t.Run(string(test.profile), func(t *testing.T) {
 			rules := RulesForProfile(test.profile)
-			codes := []string{rules[0].Code, rules[len(specRuleCatalog)-1].Code}
-			if test.profile == ProfileRecommended || test.profile == ProfilePortable {
-				codes = append(codes, rules[len(specRuleCatalog)].Code)
-			}
-			if test.profile == ProfilePortable {
-				codes = append(codes, rules[len(specRuleCatalog)+len(recommendedRuleCatalog)].Code)
+			codes := make([]string, 0, len(rules))
+			for _, rule := range rules {
+				codes = append(codes, rule.Code)
 			}
 			if strings.Join(codes, ",") != strings.Join(test.want, ",") {
 				t.Fatalf("rules = %#v, want %v", codes, test.want)
 			}
 		})
+	}
+}
+
+func ruleCodes(rules ...Rule) []string {
+	codes := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		codes = append(codes, rule.Code)
+	}
+	return codes
+}
+
+func TestRecommendedLocalReferenceDiagnostics(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "demo")
+	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "docs", "guide.md"), []byte("# Guide\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "docs", "space name.md"), []byte("# Space\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "docs", "literal%20.md"), []byte("# Literal\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(root, "outside.md")
+	if err := os.WriteFile(outside, []byte("# Outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(dir, "docs", "outside-link.md")
+	if err := os.Symlink(outside, symlink); err != nil {
+		t.Skipf("symlinks are not supported: %v", err)
+	}
+	brokenSymlink := filepath.Join(dir, "docs", "broken-link.md")
+	if err := os.Symlink(filepath.Join(root, "does-not-exist.md"), brokenSymlink); err != nil {
+		t.Skipf("symlinks are not supported: %v", err)
+	}
+	content := "---\n" +
+		"name: demo\n" +
+		"description: Demo skill\n" +
+		"---\n" +
+		"See [guide](docs/guide.md), ![space](<docs/space name.md> \"title\"), [query](docs/guide.md?view=1#top), [encoded](docs/space%20name.md#top), and [literal](docs/literal%2520.md).\n" +
+		"[defined]: <docs/guide.md> 'title'\n" +
+		"[missing](docs/missing.md)\n" +
+		"[missing-def]: docs/missing-two.md\n" +
+		"[parent](../outside.md) [encoded-parent](%2E%2E/outside.md) [absolute](/outside.md) [encoded-absolute](%2Foutside.md) [symlink](docs/outside-link.md) [broken](docs/broken-link.md)\n" +
+		"[external](https://example.com/missing.md) [mail](mailto:missing@example.com) [anchor](#section) [query-only](?view=1)\n" +
+		"`[code](docs/code-missing.md)` and \\[escaped](docs/escaped-missing.md)\n" +
+		"```\n[code-fence](docs/fence-missing.md)\n```\n"
+	path := filepath.Join(dir, "SKILL.md")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := ValidateSkillMDWithProfile(path, ProfileSpec); len(got) != 0 {
+		t.Fatalf("spec diagnostics = %#v; local references must be profile-only", got)
+	}
+	diagnostics := ValidateSkillMDWithProfile(path, ProfileRecommended)
+	counts := map[string]int{}
+	for _, diagnostic := range diagnostics {
+		counts[diagnostic.Code]++
+		if diagnostic.Code == RuleLocalReferenceMissing || diagnostic.Code == RuleLocalReferenceEscape {
+			if diagnostic.Severity != SeverityError || diagnostic.Line < 5 || diagnostic.Column < 1 {
+				t.Fatalf("local reference diagnostic location/severity = %#v", diagnostic)
+			}
+		}
+	}
+	if counts[RuleLocalReferenceMissing] != 3 {
+		t.Fatalf("missing-reference diagnostics = %#v", diagnostics)
+	}
+	if counts[RuleLocalReferenceEscape] != 5 {
+		t.Fatalf("escape diagnostics = %#v", diagnostics)
+	}
+	if len(diagnostics) != 8 {
+		t.Fatalf("diagnostics = %#v", diagnostics)
+	}
+
+	portable := ValidateSkillMDWithProfile(path, ProfilePortable)
+	if len(portable) != len(diagnostics) {
+		t.Fatalf("portable diagnostics = %#v; want recommended plus no filename issue", portable)
+	}
+}
+
+func TestMarkdownReferenceParserHandlesLocationsAndCode(t *testing.T) {
+	raw := "See [guide](<docs/guide name.md> \"A title\") and ![image](docs/image.md).\n" +
+		"[reference]: <docs/reference name.md> 'Title'\n" +
+		"`[span](docs/span.md)` \\[escaped](docs/escaped.md)\n" +
+		"~~~\n[fenced](docs/fenced.md)\n~~~\n"
+	references := parseMarkdownReferences(raw)
+	if len(references) != 3 {
+		t.Fatalf("references = %#v", references)
+	}
+	want := []markdownReference{
+		{destination: "docs/guide name.md", line: 1, column: 14},
+		{destination: "docs/image.md", line: 1, column: 58},
+		{destination: "docs/reference name.md", line: 2, column: 15},
+	}
+	for index, reference := range references {
+		if reference != want[index] {
+			t.Errorf("reference %d = %#v, want %#v", index, reference, want[index])
+		}
+	}
+}
+
+func TestMarkdownReferenceParserExcludesFrontmatterAndMultilineCode(t *testing.T) {
+	raw := "---\n" +
+		"name: demo\n" +
+		"description: See [missing](docs/frontmatter.md)\n" +
+		"---\n" +
+		"`[code](docs/first.md)\n" +
+		"[still-code](docs/second.md)`\n" +
+		"[body](docs/body.md)\n"
+	references := parseMarkdownReferences(raw)
+	want := []markdownReference{{destination: "docs/body.md", line: 7, column: 8}}
+	if !reflect.DeepEqual(references, want) {
+		t.Fatalf("references = %#v, want %#v", references, want)
+	}
+}
+
+func TestLocalReferencesIgnoreFrontmatterCodeDelimiters(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "demo")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "SKILL.md")
+	raw := "---\n" +
+		"name: demo\n" +
+		"description: \"`\"\n" +
+		"---\n" +
+		"[missing](docs/missing.md)`\n"
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	diagnostics := ValidateSkillMDWithProfile(path, ProfileRecommended)
+	if len(diagnostics) != 1 || diagnostics[0].Code != RuleLocalReferenceMissing || diagnostics[0].Line != 5 {
+		t.Fatalf("diagnostics = %#v, want GS220 at line 5", diagnostics)
+	}
+}
+
+func TestLocalReferenceTargetClassifiesWindowsPathsHostIndependently(t *testing.T) {
+	root := t.TempDir()
+	for _, destination := range []string{
+		`..\outside.md`,
+		`\outside.md`,
+		`C:\outside.md`,
+		`\\server\share\outside.md`,
+	} {
+		_, kind, ok := localReferenceTarget(root, destination)
+		if !ok || kind != localReferenceEscape {
+			t.Errorf("localReferenceTarget(%q) = _, %v, %v; want escape", destination, kind, ok)
+		}
+	}
+}
+
+func TestMarkdownReferenceParserMalformedBracketWorkIsBounded(t *testing.T) {
+	raw := strings.Repeat("[", 100_000)
+	if references := parseMarkdownReferences(raw); len(references) != 0 {
+		t.Fatalf("references = %#v, want none", references)
 	}
 }
 

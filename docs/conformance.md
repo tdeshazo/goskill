@@ -42,20 +42,33 @@ with `--profile`; it accepts no sources or JSON/SARIF output options.
 | Profile | Rules | Severity and exit status |
 | --- | --- | --- |
 | `spec` | Normative `ASxxx` Agent Skills requirements. | All findings are errors; any finding makes the result invalid and exits nonzero. |
-| `recommended` | `spec` plus `GSxxx` official authoring guidance. | Guidance findings are warnings. Warnings do not make a result invalid and exit zero. |
-| `portable` | `recommended` plus `GPxxx` cross-client interoperability checks. | `GSxxx` remains warning-only; `GPxxx` portability failures are errors and exit nonzero. |
+| `recommended` | `spec` plus `GSxxx` official authoring guidance and bounded local-reference integrity checks. | `GS210` is a warning. `GS220` and `GS221` are errors and make the result invalid. |
+| `portable` | `recommended` plus `GPxxx` cross-client interoperability checks. | `GS210` remains warning-only; `GS220`, `GS221`, and `GPxxx` portability failures are errors and exit nonzero. |
 
 The initial guidance rule is `GS210`: a `SKILL.md` above 500 physical lines
 warns with its actual line count. This is official guidance, not a normative
 specification requirement: a 501-line skill is valid and exits zero with the
 `recommended` profile.
 
+Recommended profiles also inspect Markdown link and image destinations and
+reference definitions. `GS220` reports a local target that does not exist.
+`GS221` reports an absolute target, a relative target that lexically leaves the
+skill directory, or a target that resolves through a symlink outside the skill
+directory. These findings are errors because the author action is clear: keep
+every local target present and inside the skill directory. The `spec` profile
+does not inspect these references, so the default compatibility contract is
+unchanged. External and opaque URL schemes, fragments, code spans, and fenced
+code are ignored. Angle-bracket destinations, titles, spaces, URL encoding,
+and query or fragment suffixes are supported.
+
 The initial portability rule is `GP310`: `portable` requires the exact
 uppercase filename `SKILL.md`. The `spec` profile continues to accept lowercase
 `skill.md` for compatibility with the pinned reference parser, but that name is
 not portable to case-sensitive client implementations. No broad linting,
 security analysis, or speculative compatibility heuristics are included in
-these profiles.
+these profiles. Discussion [282](https://github.com/agentskills/agentskills/discussions/282)
+provided design context for the local-reference checks; it is not treated as a
+normative specification source.
 
 ## Machine-readable output
 
@@ -123,12 +136,13 @@ should use the stable rule code rather than diagnostic text.
 
 ## What profiles do not guarantee
 
-Profiles do not lint prose, perform security analysis, inspect references, or
-enforce repository policy. In particular, duplicate skill names and missing,
-escaping, or broken local Markdown links do not cause `goskill validate` to
-fail. `recommended` contains only documented official guidance, and `portable`
-contains only narrowly defensible cross-client rules; broad lint/security
-heuristics remain out of scope.
+Profiles do not lint prose, perform security analysis, or enforce repository
+policy. The `spec` profile does not inspect references. The `recommended` and
+`portable` profiles inspect only the bounded Markdown destinations described
+above; they do not perform broad link checking or crawl referenced content.
+Duplicate skill names remain valid, and external URLs, fragments, and code are
+not treated as local targets. Broad lint/security heuristics remain out of
+scope.
 
 ## Relationship to `skills-ref`
 

@@ -204,9 +204,13 @@ work, and the profile boundaries.
 `goskill validate` defaults to the strict `spec` Agent Skills format validator.
 For that profile: Given the Agent Skills specification revision embedded in this binary, this directory conforms to every normative rule we implement from that specification. It does not claim to implement every possible upstream rule. It reports
 stable `ASxxx` error codes for invalid `SKILL.md` frontmatter and name,
-description, compatibility, metadata, and `allowed-tools` conformance. It does
-not lint prose, check local links, or reject duplicate names. The embedded
-Agent Skills specification revision is shown by `goskill --version`; see
+description, compatibility, metadata, and `allowed-tools` conformance. The
+default `spec` profile does not lint prose, inspect local links, or reject
+duplicate names. The explicit `recommended` and `portable` profiles add
+bounded local-reference diagnostics (`GS220` for missing targets and `GS221`
+for targets that escape the skill directory); these are compatibility checks,
+not normative specification requirements. The embedded Agent Skills
+specification revision is shown by `goskill --version`; see
 [the conformance contract](docs/conformance.md) for the rule scope, pinned
 revision policy, and known `skills-ref` differences.
 
@@ -252,13 +256,16 @@ Validation profiles make the policy explicit:
 | Profile | Rules | Exit behavior |
 | --- | --- | --- |
 | `spec` (default) | Normative `ASxxx` conformance errors only. | Nonzero only for `ASxxx` errors. |
-| `recommended` | `spec` plus official-guidance `GSxxx` warnings. | Warnings leave the skill valid and exit zero. |
-| `portable` | `recommended` plus cross-client `GPxxx` portability errors. | Warnings exit zero; portability errors exit nonzero. |
+| `recommended` | `spec` plus `GS210` guidance and bounded local-reference checks. | `GS210` is a warning; `GS220`/`GS221` errors exit nonzero. |
+| `portable` | `recommended` plus cross-client `GPxxx` portability errors. | `GS210` exits zero; `GS220`/`GS221` and portability errors exit nonzero. |
 
 For example, a 501-line `SKILL.md` emits `GS210` under `recommended`, but is
-still valid and exits zero. `portable` additionally requires the exact
-uppercase `SKILL.md` filename, so its reference-compatible lowercase
-`skill.md` alternative is an error on case-sensitive clients. See the
+still valid and exits zero. Missing local Markdown targets emit `GS220`, while
+absolute, lexically escaping, or symlink-escaping targets emit `GS221` in
+`recommended` and `portable`. External schemes, fragments, and code spans or
+fences are ignored. `portable` additionally requires the exact uppercase
+`SKILL.md` filename, so its reference-compatible lowercase `skill.md`
+alternative is an error on case-sensitive clients. See the
 [conformance contract](docs/conformance.md) for the complete profile policy.
 
 ## Find options

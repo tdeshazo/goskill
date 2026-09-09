@@ -50,7 +50,16 @@ func TestRulesTextAndExplainDisplayCatalogEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := terminal.StripEscapes(out.String())
-	for _, want := range []string{skills.RuleSkillMDRequired, skills.RuleSkillLineCount, skills.RuleSkillFilename, "error · spec", "warning · recommended", "rationale: case-sensitive clients"} {
+	for _, want := range []string{
+		skills.RuleSkillMDRequired,
+		skills.RuleSkillLineCount,
+		skills.RuleLocalReferenceMissing,
+		skills.RuleLocalReferenceEscape,
+		skills.RuleSkillFilename,
+		"error · spec",
+		"warning · recommended",
+		"rationale: case-sensitive clients",
+	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("rules text missing %q:\n%s", want, text)
 		}

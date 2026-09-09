@@ -16,14 +16,17 @@ Completed:
 - an immutable upstream revision, surfaced through `goskill spec` and
   `goskill validate --version-info`;
 - deterministic structured diagnostics with text, JSON, and SARIF output;
+- bounded recommended-profile Markdown local-reference diagnostics;
 - conformance fixtures and pinned differential CI against
   [`skills-ref`](https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/skills-ref/README.md).
 
 The current additional rule surface is deliberately small: `recommended` adds
-`GS210` (the 500-line guidance warning) to `spec`, and `portable` adds `GP310`
-(the exact uppercase `SKILL.md` filename requirement) on top of `recommended`.
-Local-reference checks are intentionally absent; if adopted, they belong in
-`recommended`, not in the normative `spec` profile.
+`GS210` (the 500-line guidance warning), `GS220` (missing local targets), and
+`GS221` (local targets that escape the skill directory) to `spec`. `portable`
+adds `GP310` (the exact uppercase `SKILL.md` filename requirement) on top of
+`recommended`. `GS220` and `GS221` are recommended-profile errors, while
+`GS210` remains warning-only. Local-reference checks remain outside the
+normative `spec` profile.
 
 ## Remaining milestones
 
@@ -64,13 +67,13 @@ which profile enables it, and the evidence behind it.
 **Outcome:** narrowly scoped, evidence-backed authoring guidance is available
 without redefining the Agent Skills specification.
 
-- [ ] Add guidance only when it has an authoritative basis and a clear author
+- [x] Add guidance only when it has an authoritative basis and a clear author
       action.
-- [ ] Consider local-reference checks here, informed by [Agent Skills
+- [x] Add local-reference checks here, informed by [Agent Skills
       discussion 282](https://github.com/agentskills/agentskills/discussions/282),
       with path handling and false-positive behavior defined before
       implementation.
-- [ ] Preserve the boundary: guidance is not normative conformance and
+- [x] Preserve the boundary: guidance is not normative conformance and
       security analysis is a separate future audit.
 
 ### 4. Portable, versioned corpus
