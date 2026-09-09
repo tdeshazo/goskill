@@ -70,6 +70,65 @@ these profiles. Discussion [282](https://github.com/agentskills/agentskills/disc
 provided design context for the local-reference checks; it is not treated as a
 normative specification source.
 
+## Portability corpus
+
+Milestone 4 evidence is checked in under
+[`testdata/portability/v1`](../testdata/portability/v1). The corpus is JSON
+with `schema_version: "1"` and four required top-level fields:
+
+- `schema_version` identifies the supported major schema (`"1"`).
+- `name` is a stable lowercase corpus identifier.
+- `clients` identifies each implementation with a stable `id`, display
+  `name`, and implementation path. External clients also require a full
+  40-character lowercase Git revision. The `goskill` client is marked
+  `local_replay: true`: its expected outcome is certified by the current
+  offline Go replay instead of an impossible future commit claim.
+- `cases` contains stable case `id`, description, a relative `fixture` path,
+  the `portable` profile, an `expected` outcome for every client, and
+  external-client evidence. Each case's `evidence` identifies its client, an
+  HTTPS immutable source URL bound to that implementation path and exact
+  revision, the revision again, a reproducible `method`, and the
+  SHA-256 `artifact_sha256` of the fixture directory (the same deterministic
+  hash produced by `skills.FolderHash`).
+
+Supported source forms are `https://host/owner/repository/tree/<sha>` and
+`https://host/owner/repository/-/tree/<sha>`, each with an optional
+subdirectory. Their host, repository, subdirectory, and revision must compose
+to the declared implementation path and revision.
+
+Expected outcomes contain `valid` and an ordered list of stable diagnostic
+`code`/`severity` pairs. A valid outcome may include warnings; an error
+diagnostic makes it invalid. Outcomes are recorded from each client's native
+validation command; `profile` identifies the goskill replay policy. The loader accepts unknown JSON fields so a
+backward-compatible schema addition does not break older readers, but it
+rejects unsupported schema versions, duplicate IDs, unknown clients/rules,
+inconsistent validity, incomplete expectations or external evidence,
+mutable/unpinned or unrelated sources, and mismatched fixture hashes. Fixture
+paths are relative and may not
+escape the corpus root.
+
+The Go tests load and validate `corpus.json`, then replay every `goskill`
+expectation with `ValidateSkillDirectoryWithProfile` without network access or
+an external client installation. The `skills-ref` outcomes are recorded with
+the pinned Agent Skills revision and an explicit command method; they are
+evidence for comparison, not a runtime dependency of `go test ./...`.
+
+To update the corpus, add or change a fixture, run the pinned external-client
+commands from each evidence record, record the complete immutable revisions
+and fixture hashes, and run:
+
+```bash
+go test ./internal/skills -run TestPortabilityCorpusReplay
+go test ./...
+```
+
+Review the source behavior and the resulting case-level diff together. A new
+`GPxxx` rule requires a documented interoperability difference, at least one
+reproducible case showing the difference, pinned client revisions, and an
+explicit author action. A single surprising result, an unpinned release/tag,
+or a network-only observation is not sufficient. Until that gate is met,
+`GP310` remains the sole portability rule.
+
 ## Machine-readable output
 
 `goskill validate` retains text output by default. Use one of these formats for

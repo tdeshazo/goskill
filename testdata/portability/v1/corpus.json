@@ -1,0 +1,72 @@
+{
+  "schema_version": "1",
+  "name": "goskill-portability-v1",
+  "clients": [
+    {
+      "id": "goskill",
+      "name": "goskill portable validator",
+      "implementation": "github.com/tdeshazo/goskill",
+      "local_replay": true
+    },
+    {
+      "id": "skills-ref",
+      "name": "Agent Skills skills-ref",
+      "implementation": "github.com/agentskills/agentskills/skills-ref",
+      "revision": "69ef37e9424c0a7ea9dd2293b559e43ec8176379"
+    }
+  ],
+  "cases": [
+    {
+      "id": "lowercase-skill-file",
+      "description": "The portable profile rejects the lowercase filename that skills-ref accepts.",
+      "fixture": "fixtures/lowercase",
+      "profile": "portable",
+      "expected": {
+        "goskill": {
+          "valid": false,
+          "diagnostics": [
+            {"code": "GP310", "severity": "error"}
+          ]
+        },
+        "skills-ref": {
+          "valid": true,
+          "diagnostics": []
+        }
+      },
+      "evidence": [
+        {
+          "client": "skills-ref",
+          "source": "https://github.com/agentskills/agentskills/tree/69ef37e9424c0a7ea9dd2293b559e43ec8176379/skills-ref",
+          "revision": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
+          "method": "git clone https://github.com/agentskills/agentskills.git && git -C agentskills checkout 69ef37e9424c0a7ea9dd2293b559e43ec8176379 && cd agentskills/skills-ref && uv run skills-ref validate \"$FIXTURE\"",
+          "artifact_sha256": "5b8b017477f1a5d89d461b1cf60e20f7f0ef5cb242387e90a890adad54e6d2e0"
+        }
+      ]
+    },
+    {
+      "id": "uppercase-skill-file",
+      "description": "Both recorded clients accept the exact uppercase filename.",
+      "fixture": "fixtures/uppercase",
+      "profile": "portable",
+      "expected": {
+        "goskill": {
+          "valid": true,
+          "diagnostics": []
+        },
+        "skills-ref": {
+          "valid": true,
+          "diagnostics": []
+        }
+      },
+      "evidence": [
+        {
+          "client": "skills-ref",
+          "source": "https://github.com/agentskills/agentskills/tree/69ef37e9424c0a7ea9dd2293b559e43ec8176379/skills-ref",
+          "revision": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
+          "method": "git clone https://github.com/agentskills/agentskills.git && git -C agentskills checkout 69ef37e9424c0a7ea9dd2293b559e43ec8176379 && cd agentskills/skills-ref && uv run skills-ref validate \"$FIXTURE\"",
+          "artifact_sha256": "8cd8885759575ce523ceba73680b7d1f64bfaed92c0787a7cd2dbbb4272deeff"
+        }
+      ]
+    }
+  ]
+}

@@ -81,10 +81,17 @@ without redefining the Agent Skills specification.
 **Outcome:** portability rules are justified by a reproducible corpus rather
 than assumptions about clients.
 
-- [ ] Define a versioned corpus format with expected outcomes and provenance.
-- [ ] Capture reproducible evidence across relevant client implementations.
-- [ ] Add `GPxxx` rules only for documented interoperability differences;
-      keep `GP310` as the sole portability rule until then.
+- [x] Define a versioned corpus format with expected outcomes and provenance
+      under `testdata/portability/v1`, with deterministic Go loading and
+      validation.
+- [x] Capture reproducible, pinned external evidence for `skills-ref`,
+      including immutable source URLs bound to its repository and revision,
+      methods, and fixture hashes. Go tests replay the current goskill corpus
+      offline; external clients remain recorded evidence rather than runtime
+      dependencies.
+- [x] Keep `GP310` as the sole portability rule: the corpus documents the
+      lowercase filename difference and the gate for adding future `GPxxx`
+      rules without claiming unsupported client behavior.
 
 ### 5. JSON and SARIF compatibility contract
 

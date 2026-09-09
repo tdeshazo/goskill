@@ -214,6 +214,14 @@ specification revision is shown by `goskill --version`; see
 [the conformance contract](docs/conformance.md) for the rule scope, pinned
 revision policy, and known `skills-ref` differences.
 
+Portability evidence is versioned under
+[`testdata/portability/v1`](testdata/portability/v1). Its deterministic loader
+checks pinned external-client revisions, immutable provenance bound to each
+client, expected outcomes, and fixture hashes; `go test ./...` replays the
+current goskill outcomes offline. See the
+[portability corpus policy](docs/conformance.md#portability-corpus) before
+updating evidence or proposing a new `GPxxx` rule.
+
 Use `goskill spec` to inspect the exact upstream specification snapshot used
 by this build. Agent Skills currently has no formal numbered specification
 release, so goskill identifies the contract by its immutable upstream Git
