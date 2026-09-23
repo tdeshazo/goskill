@@ -12,8 +12,9 @@ import (
 	"github.com/tdeshazo/goskill/internal/skills"
 )
 
-func TestParseUse(t *testing.T) {
-	source, opts, err := parseUse([]string{
+func TestCobraUseFlags(t *testing.T) {
+	cmd := (App{Version: "test"}).useCommand()
+	err := cmd.ParseFlags([]string{
 		"vercel-labs/agent-skills@web-design-guidelines",
 		"--agent",
 		"codex",
@@ -22,28 +23,33 @@ func TestParseUse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source != "vercel-labs/agent-skills@web-design-guidelines" {
-		t.Fatalf("source = %q", source)
+	if got := cmd.Flags().Args(); len(got) != 1 || got[0] != "vercel-labs/agent-skills@web-design-guidelines" {
+		t.Fatalf("sources = %q", got)
 	}
-	if len(opts.Agent) != 1 || opts.Agent[0] != "codex" || !opts.FullDepth {
-		t.Fatalf("options = %#v", opts)
+	agents, err := cmd.Flags().GetStringArray("agent")
+	if err != nil || len(agents) != 1 || agents[0] != "codex" {
+		t.Fatalf("agents = %q, %v", agents, err)
+	}
+	fullDepth, err := cmd.Flags().GetBool("full-depth")
+	if err != nil || !fullDepth {
+		t.Fatalf("full-depth = %v, %v", fullDepth, err)
 	}
 }
 
-func TestParseUseRejectsInvalidOptions(t *testing.T) {
+func TestCobraUseRejectsInvalidOptions(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
 		want string
 	}{
-		{name: "missing skill", args: []string{"source", "--skill"}, want: "requires a skill name"},
+		{name: "missing skill", args: []string{"source", "--skill"}, want: "flag needs an argument"},
 		{name: "repeated skill", args: []string{"source", "--skill", "one", "--skill", "two"}, want: "only one --skill"},
-		{name: "unknown option", args: []string{"source", "--wat"}, want: "unknown option"},
-		{name: "multiple sources", args: []string{"one", "two"}, want: "expected one source"},
+		{name: "unknown option", args: []string{"source", "--wat"}, want: "unknown flag"},
+		{name: "multiple sources", args: []string{"one", "two"}, want: "accepts at most 1 arg"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, _, err := parseUse(test.args)
+			err := (App{Version: "test", Stderr: &bytes.Buffer{}}).Run(append([]string{"use"}, test.args...))
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want containing %q", err, test.want)
 			}

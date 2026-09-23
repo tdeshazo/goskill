@@ -80,68 +80,6 @@ type FindOptions struct {
 	Sort      search.SortMode
 }
 
-func (a App) Run(args []string) error {
-	if len(args) == 0 {
-		a.banner()
-		return nil
-	}
-	cmd, rest := args[0], args[1:]
-	if !skipUpdateCheckForCommand(cmd, rest) {
-		a.warnIfNewerRelease(cmd)
-	}
-	switch cmd {
-	case "--help", "-h", "help":
-		a.help()
-	case "--version", "-v":
-		a.writeOut(renderVersionOutput(a.Version))
-	case "spec":
-		return a.Spec(rest)
-	case "rules":
-		return a.Rules(rest)
-	case "explain":
-		return a.Explain(rest)
-	case "add", "a":
-		src, opts, err := parseAdd(rest)
-		if err != nil {
-			return err
-		}
-		return a.Add(src, opts)
-	case "use":
-		src, opts, err := parseUse(rest)
-		if err != nil {
-			return err
-		}
-		return a.Use(src, opts)
-	case "agent":
-		return a.Agent(rest)
-	case "list", "ls":
-		return a.List(rest)
-	case "remove", "rm", "r":
-		names, opts, err := parseRemove(rest)
-		if err != nil {
-			return err
-		}
-		return a.Remove(names, opts)
-	case "find", "search", "f", "s":
-		return a.Find(rest)
-	case "validate":
-		return a.Validate(rest)
-	case "init":
-		return a.Init(rest)
-	case "install", "i", "experimental_install": // experimental_install is a legacy alias.
-		return a.InstallFromLock(rest)
-	case "sync", "experimental_sync": // experimental_sync is a legacy alias.
-		return a.Sync(rest)
-	case "check":
-		return a.Check(rest, false)
-	case "update", "upgrade":
-		return a.Check(rest, true)
-	default:
-		return fmt.Errorf("unknown command: %s", cmd)
-	}
-	return nil
-}
-
 func skipUpdateCheckForCommand(cmd string, args []string) bool {
 	if cmd != "validate" {
 		return false
@@ -383,24 +321,7 @@ func parsePositiveInt(input string) (int, bool) {
 	return n, n > 0
 }
 
-func (a App) List(args []string) error {
-	var global *bool
-	var agentNames []string
-	jsonOut := false
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-g", "--global":
-			v := true
-			global = &v
-		case "--json":
-			jsonOut = true
-		case "-a", "--agent":
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				i++
-				agentNames = append(agentNames, args[i])
-			}
-		}
-	}
+func (a App) list(global *bool, agentNames []string, jsonOut bool) error {
 	registry, err := a.agentRegistry()
 	if err != nil {
 		return err
@@ -492,15 +413,7 @@ func (a App) Remove(skillNames []string, opts RemoveOptions) error {
 	return nil
 }
 
-func (a App) Find(args []string) error {
-	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		a.writeOut(renderFindHelp())
-		return nil
-	}
-	queryArgs, opts, err := parseFind(args)
-	if err != nil {
-		return err
-	}
+func (a App) find(queryArgs []string, opts FindOptions) error {
 	if opts.Providers {
 		if len(queryArgs) > 0 {
 			return errors.New("--providers does not accept a query")
@@ -598,68 +511,6 @@ func (a App) Find(args []string) error {
 	return nil
 }
 
-func parseFind(args []string) ([]string, FindOptions, error) {
-	opts := FindOptions{Sort: search.SortRelevance}
-	query := make([]string, 0, len(args))
-	for index := 0; index < len(args); index++ {
-		arg := args[index]
-		switch arg {
-		case "--deep":
-			opts.Deep = true
-			continue
-		case "--refresh":
-			opts.Refresh = true
-			continue
-		case "--verified":
-			opts.Verified = true
-			continue
-		case "--json":
-			opts.JSON = true
-			continue
-		case "--providers":
-			opts.Providers = true
-			continue
-		case "--provider", "--sort":
-			if index+1 >= len(args) || strings.HasPrefix(args[index+1], "--") {
-				return nil, FindOptions{}, fmt.Errorf("%s requires a value", arg)
-			}
-			value := strings.TrimSpace(args[index+1])
-			index++
-			if value == "" {
-				return nil, FindOptions{}, fmt.Errorf("%s requires a value", arg)
-			}
-			if arg == "--provider" {
-				opts.Provider = value
-				continue
-			}
-			opts.Sort = search.SortMode(strings.ToLower(value))
-			if !opts.Sort.Valid() {
-				return nil, FindOptions{}, fmt.Errorf("invalid --sort value %q (want relevance, popular, or newest)", value)
-			}
-			continue
-		}
-		if value, ok := strings.CutPrefix(arg, "--provider="); ok {
-			if strings.TrimSpace(value) == "" {
-				return nil, FindOptions{}, errors.New("--provider requires a value")
-			}
-			opts.Provider = strings.TrimSpace(value)
-			continue
-		}
-		if value, ok := strings.CutPrefix(arg, "--sort="); ok {
-			opts.Sort = search.SortMode(strings.ToLower(strings.TrimSpace(value)))
-			if !opts.Sort.Valid() {
-				return nil, FindOptions{}, fmt.Errorf("invalid --sort value %q (want relevance, popular, or newest)", value)
-			}
-			continue
-		}
-		if strings.HasPrefix(arg, "--") {
-			return nil, FindOptions{}, fmt.Errorf("unknown find option %q", arg)
-		}
-		query = append(query, arg)
-	}
-	return query, opts, nil
-}
-
 func catalogTTL() time.Duration {
 	raw := strings.TrimSpace(os.Getenv("GOSKILL_CATALOG_TTL"))
 	if raw == "" {
@@ -672,15 +523,7 @@ func catalogTTL() time.Duration {
 	return -1
 }
 
-func (a App) Validate(args []string) error {
-	opts, err := parseValidate(args)
-	if err != nil {
-		return err
-	}
-	if opts.Help {
-		a.writeOut(renderValidateHelp())
-		return nil
-	}
+func (a App) validate(opts validationOptions) error {
 	if opts.VersionInfo {
 		a.writeOut(renderValidationVersionInfo(a.Version, opts.Profile))
 		return nil
@@ -722,6 +565,7 @@ func (a App) Validate(args []string) error {
 	} else {
 		report := newValidationReport(results, counts, opts.Profile)
 		var output string
+		var err error
 		switch opts.Format {
 		case validationFormatJSON:
 			output, err = renderValidationJSON(report)
@@ -864,7 +708,7 @@ func (a App) InstallFromLock(args []string) error {
 	for skillName, entry := range lock.Skills {
 		switch entry.SourceType {
 		case "node_modules":
-			if err := a.Sync([]string{"-y", "--force"}); err != nil {
+			if err := a.sync(syncOptions{Yes: true, Force: true}); err != nil {
 				return err
 			}
 		default:
@@ -881,8 +725,7 @@ func (a App) InstallFromLock(args []string) error {
 	return nil
 }
 
-func (a App) Sync(args []string) error {
-	opts := parseSync(args)
+func (a App) sync(opts syncOptions) error {
 	registry, err := a.agentRegistry()
 	if err != nil {
 		return err
@@ -925,8 +768,7 @@ func (a App) Sync(args []string) error {
 	return nil
 }
 
-func (a App) Check(args []string, doUpdate bool) error {
-	opts := parseUpdate(args)
+func (a App) check(opts updateOptions, doUpdate bool) error {
 	var checked, updates, success int
 	if opts.Global || !opts.Project {
 		lock := lockfile.ReadGlobal()
@@ -1153,91 +995,10 @@ func agentNames(registry *agents.Registry) []string {
 	return names
 }
 
-func parseAdd(args []string) ([]string, AddOptions, error) {
-	var opts AddOptions
-	var sources []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch arg {
-		case "-g", "--global":
-			opts.Global = true
-		case "-y", "--yes":
-			opts.Yes = true
-		case "-l", "--list":
-			opts.List = true
-		case "--all":
-			opts.All = true
-		case "--full-depth":
-			opts.FullDepth = true
-		case "--copy":
-			opts.Copy = true
-		case "-a", "--agent":
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				i++
-				opts.Agent = append(opts.Agent, args[i])
-			}
-		case "-s", "--skill":
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				i++
-				opts.Skill = append(opts.Skill, args[i])
-			}
-		default:
-			sources = append(sources, arg)
-		}
-	}
-	return sources, opts, nil
-}
-
-func parseRemove(args []string) ([]string, RemoveOptions, error) {
-	var opts RemoveOptions
-	var names []string
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-g", "--global":
-			opts.Global = true
-		case "-y", "--yes":
-			opts.Yes = true
-		case "--all":
-			opts.All = true
-		case "-a", "--agent":
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				i++
-				opts.Agent = append(opts.Agent, args[i])
-			}
-		case "-s", "--skill":
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				i++
-				names = append(names, args[i])
-			}
-		default:
-			names = append(names, args[i])
-		}
-	}
-	return names, opts, nil
-}
-
 type syncOptions struct {
 	Agent []string
 	Yes   bool
 	Force bool
-}
-
-func parseSync(args []string) syncOptions {
-	var opts syncOptions
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-y", "--yes":
-			opts.Yes = true
-		case "-f", "--force":
-			opts.Force = true
-		case "-a", "--agent":
-			for i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-				i++
-				opts.Agent = append(opts.Agent, args[i])
-			}
-		}
-	}
-	return opts
 }
 
 type updateOptions struct {
@@ -1245,23 +1006,6 @@ type updateOptions struct {
 	Project bool
 	Yes     bool
 	Skills  []string
-}
-
-func parseUpdate(args []string) updateOptions {
-	var opts updateOptions
-	for _, arg := range args {
-		switch arg {
-		case "-g", "--global":
-			opts.Global = true
-		case "-p", "--project":
-			opts.Project = true
-		case "-y", "--yes":
-			opts.Yes = true
-		default:
-			opts.Skills = append(opts.Skills, arg)
-		}
-	}
-	return opts
 }
 
 type nodeSkill struct {

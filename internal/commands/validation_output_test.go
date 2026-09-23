@@ -14,51 +14,55 @@ import (
 	"github.com/tdeshazo/goskill/internal/terminal"
 )
 
-func TestParseValidateFormats(t *testing.T) {
+func TestCobraValidateFlags(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    []string
-		format  validationFormat
-		profile skills.Profile
-		wantErr string
+		format  string
+		profile string
 	}{
-		{name: "text default", args: []string{"skill"}, format: validationFormatText, profile: skills.ProfileSpec},
-		{name: "json alias", args: []string{"--json", "skill"}, format: validationFormatJSON, profile: skills.ProfileSpec},
-		{name: "sarif alias", args: []string{"--sarif", "skill"}, format: validationFormatSARIF, profile: skills.ProfileSpec},
-		{name: "format equals", args: []string{"--format=sarif", "skill"}, format: validationFormatSARIF, profile: skills.ProfileSpec},
-		{name: "profile before format", args: []string{"--profile", "recommended", "--json", "skill"}, format: validationFormatJSON, profile: skills.ProfileRecommended},
-		{name: "profile equals after format", args: []string{"--sarif", "--profile=portable", "skill"}, format: validationFormatSARIF, profile: skills.ProfilePortable},
-		{name: "version info default profile", args: []string{"--version-info"}, format: validationFormatText, profile: skills.ProfileSpec},
-		{name: "version info profile before", args: []string{"--profile", "recommended", "--version-info"}, format: validationFormatText, profile: skills.ProfileRecommended},
-		{name: "version info profile after", args: []string{"--version-info", "--profile=portable"}, format: validationFormatText, profile: skills.ProfilePortable},
-		{name: "mutually exclusive", args: []string{"--json", "--sarif", "skill"}, wantErr: "mutually exclusive"},
-		{name: "format and alias", args: []string{"--format", "json", "--json", "skill"}, wantErr: "mutually exclusive"},
-		{name: "invalid format", args: []string{"--format", "xml", "skill"}, wantErr: "invalid validation format"},
-		{name: "missing profile", args: []string{"--profile"}, wantErr: "--profile requires a value"},
-		{name: "invalid profile", args: []string{"--profile", "lint", "skill"}, wantErr: "invalid validation profile"},
-		{name: "duplicate profile", args: []string{"--profile", "spec", "--profile=portable", "skill"}, wantErr: "mutually exclusive"},
-		{name: "version info with source", args: []string{"--version-info", "skill"}, wantErr: "does not accept skill sources"},
-		{name: "version info with JSON", args: []string{"--version-info", "--json"}, wantErr: "cannot be combined with output formats"},
-		{name: "version info with text format", args: []string{"--format=text", "--version-info"}, wantErr: "cannot be combined with output formats"},
-		{name: "unknown option", args: []string{"--unknown", "skill"}, wantErr: "unknown validate option"},
+		{name: "text default", args: []string{"skill"}, format: "text", profile: "spec"},
+		{name: "format equals", args: []string{"--format=sarif", "skill"}, format: "sarif", profile: "spec"},
+		{name: "profile before format", args: []string{"--profile", "recommended", "--json", "skill"}, format: "text", profile: "recommended"},
+		{name: "profile equals", args: []string{"--sarif", "--profile=portable", "skill"}, format: "text", profile: "portable"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			opts, err := parseValidate(test.args)
-			if test.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
-					t.Fatalf("parseValidate(%v) error = %v", test.args, err)
-				}
-				return
+			cmd := (App{Version: "test"}).validateCommand()
+			if err := cmd.ParseFlags(test.args); err != nil {
+				t.Fatal(err)
 			}
-			if err != nil || opts.Format != test.format || opts.Profile != test.profile {
-				t.Fatalf("parseValidate(%v) = %#v, %v", test.args, opts, err)
+			format, _ := cmd.Flags().GetString("format")
+			profile, _ := cmd.Flags().GetString("profile")
+			if format != test.format || profile != test.profile || len(cmd.Flags().Args()) != 1 {
+				t.Fatalf("flags = format:%q profile:%q args:%q", format, profile, cmd.Flags().Args())
 			}
-			if opts.VersionInfo && len(opts.Sources) != 0 {
-				t.Fatalf("version info unexpectedly has sources: %#v", opts)
-			}
-			if !opts.VersionInfo && len(opts.Sources) != 1 {
-				t.Fatalf("validation sources = %#v", opts.Sources)
+		})
+	}
+}
+
+func TestCobraValidateRejectsInvalidOptions(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"mutually exclusive", []string{"--json", "--sarif", "skill"}, "mutually exclusive"},
+		{"format and alias", []string{"--format", "json", "--json", "skill"}, "mutually exclusive"},
+		{"invalid format", []string{"--format", "xml", "skill"}, "invalid validation format"},
+		{"missing profile", []string{"--profile"}, "flag needs an argument"},
+		{"invalid profile", []string{"--profile", "lint", "skill"}, "invalid validation profile"},
+		{"duplicate profile", []string{"--profile", "spec", "--profile=portable", "skill"}, "mutually exclusive"},
+		{"version info with source", []string{"--version-info", "skill"}, "does not accept skill sources"},
+		{"version info with JSON", []string{"--version-info", "--json"}, "cannot be combined with output formats"},
+		{"version info with text format", []string{"--format=text", "--version-info"}, "cannot be combined with output formats"},
+		{"unknown option", []string{"--unknown", "skill"}, "unknown flag"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := (App{Version: "test", Stderr: &bytes.Buffer{}}).Run(append([]string{"validate"}, test.args...))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("validate(%v) error = %v", test.args, err)
 			}
 		})
 	}

@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 	"path"
@@ -24,7 +23,6 @@ type validationOptions struct {
 	Format      validationFormat
 	Profile     skills.Profile
 	Sources     []string
-	Help        bool
 	VersionInfo bool
 }
 
@@ -48,112 +46,6 @@ func (e validationMachineOutputError) Error() string {
 
 func (e validationMachineOutputError) ExitCode() int {
 	return 1
-}
-
-func parseValidate(args []string) (validationOptions, error) {
-	opts := validationOptions{Format: validationFormatText, Profile: skills.ProfileSpec}
-	formatSet := false
-	profileSet := false
-	versionInfoSet := false
-	setFormat := func(value string) error {
-		if formatSet {
-			return errors.New("validation output format options are mutually exclusive")
-		}
-		switch validationFormat(strings.ToLower(strings.TrimSpace(value))) {
-		case validationFormatText, validationFormatJSON, validationFormatSARIF:
-			opts.Format = validationFormat(strings.ToLower(strings.TrimSpace(value)))
-			formatSet = true
-			return nil
-		default:
-			return fmt.Errorf("invalid validation format %q (want text, json, or sarif)", value)
-		}
-	}
-	setProfile := func(value string) error {
-		if profileSet {
-			return errors.New("validation profile options are mutually exclusive")
-		}
-		profile := skills.Profile(strings.ToLower(strings.TrimSpace(value)))
-		if !profile.Valid() {
-			return fmt.Errorf("invalid validation profile %q (want spec, recommended, or portable)", value)
-		}
-		opts.Profile = profile
-		profileSet = true
-		return nil
-	}
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch arg {
-		case "--help", "-h":
-			if len(args) != 1 {
-				return validationOptions{}, errors.New(validateUsage)
-			}
-			opts.Help = true
-			return opts, nil
-		case "--format":
-			if i+1 >= len(args) {
-				return validationOptions{}, errors.New("--format requires a value")
-			}
-			i++
-			if err := setFormat(args[i]); err != nil {
-				return validationOptions{}, err
-			}
-		case "--profile":
-			if i+1 >= len(args) {
-				return validationOptions{}, errors.New("--profile requires a value")
-			}
-			i++
-			if err := setProfile(args[i]); err != nil {
-				return validationOptions{}, err
-			}
-		case "--json":
-			if err := setFormat(string(validationFormatJSON)); err != nil {
-				return validationOptions{}, err
-			}
-		case "--sarif":
-			if err := setFormat(string(validationFormatSARIF)); err != nil {
-				return validationOptions{}, err
-			}
-		case "--version-info":
-			if versionInfoSet {
-				return validationOptions{}, errors.New("--version-info may only be specified once")
-			}
-			versionInfoSet = true
-			opts.VersionInfo = true
-		default:
-			if value, ok := strings.CutPrefix(arg, "--format="); ok {
-				if err := setFormat(value); err != nil {
-					return validationOptions{}, err
-				}
-				continue
-			}
-			if value, ok := strings.CutPrefix(arg, "--profile="); ok {
-				if err := setProfile(value); err != nil {
-					return validationOptions{}, err
-				}
-				continue
-			}
-			if strings.HasPrefix(arg, "--") {
-				return validationOptions{}, fmt.Errorf("unknown validate option %q", arg)
-			}
-			if strings.TrimSpace(arg) != "" {
-				opts.Sources = append(opts.Sources, arg)
-			}
-		}
-	}
-	if opts.VersionInfo {
-		if formatSet {
-			return validationOptions{}, fmt.Errorf("--version-info cannot be combined with output formats\n%s", validateUsage)
-		}
-		if len(opts.Sources) != 0 {
-			return validationOptions{}, fmt.Errorf("--version-info does not accept skill sources\n%s", validateUsage)
-		}
-		return opts, nil
-	}
-	if len(opts.Sources) == 0 {
-		return validationOptions{}, errors.New(validateUsage)
-	}
-	return opts, nil
 }
 
 func validationFilesForReport(root, sourceID string, files []string) []validationFile {

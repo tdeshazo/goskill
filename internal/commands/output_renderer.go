@@ -107,7 +107,7 @@ func renderBanner() string {
 
 func renderHelp() string {
 	commands := "add, use, list, remove, find, agent, spec, rules, explain, validate, check, update, init, " +
-		"install, sync"
+		"install, sync, completion"
 	return renderInfo("Usage",
 		selectorTitleStyle.Render("goskill <command> [options]"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("commands:"), commands),

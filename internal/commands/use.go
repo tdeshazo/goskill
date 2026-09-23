@@ -19,7 +19,6 @@ type UseOptions struct {
 	Skill     string
 	Agent     []string
 	FullDepth bool
-	Help      bool
 }
 
 type materializedUseSkill struct {
@@ -50,10 +49,6 @@ func ExitCode(err error) (int, bool) {
 }
 
 func (a App) Use(rawSource string, opts UseOptions) error {
-	if opts.Help {
-		fmt.Fprint(a.Stdout, useHelp())
-		return nil
-	}
 	if rawSource == "" {
 		return errors.New("missing source\n\n" + useHelp())
 	}
@@ -139,50 +134,6 @@ func splitUseSourceSelector(rawSource string) (string, string) {
 		return input, ""
 	}
 	return input[:at], input[at+1:]
-}
-
-func parseUse(args []string) (string, UseOptions, error) {
-	opts := UseOptions{Agent: []string{}}
-	sources := []string{}
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch arg {
-		case "-h", "--help":
-			opts.Help = true
-		case "--full-depth":
-			opts.FullDepth = true
-		case "-s", "--skill":
-			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
-				return "", UseOptions{}, fmt.Errorf("%s requires a skill name", arg)
-			}
-			if opts.Skill != "" {
-				return "", UseOptions{}, errors.New("only one --skill value can be provided")
-			}
-			i++
-			opts.Skill = args[i]
-		case "-a", "--agent":
-			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
-				return "", UseOptions{}, fmt.Errorf("%s requires an agent name", arg)
-			}
-			i++
-			opts.Agent = append(opts.Agent, args[i])
-		default:
-			if strings.HasPrefix(arg, "-") {
-				return "", UseOptions{}, fmt.Errorf("unknown option: %s", arg)
-			}
-			sources = append(sources, arg)
-		}
-	}
-	if opts.Help {
-		return "", opts, nil
-	}
-	if len(sources) == 0 {
-		return "", opts, nil
-	}
-	if len(sources) > 1 {
-		return "", UseOptions{}, fmt.Errorf("expected one source, received %d: %s", len(sources), strings.Join(sources, ", "))
-	}
-	return sources[0], opts, nil
 }
 
 func validateUseAgent(names []string) error {

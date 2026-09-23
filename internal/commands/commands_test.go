@@ -389,20 +389,26 @@ func TestRenderFindResultsIncludesAvailableSignalsWithoutZeroValueNoise(t *testi
 	}
 }
 
-func TestParseFindOptionsAndValidation(t *testing.T) {
-	query, options, err := parseFind([]string{"--deep", "--verified", "--provider", "SkillMD", "--sort=newest", "--json", "react", "hooks"})
+func TestCobraFindOptionsAndValidation(t *testing.T) {
+	cmd := (App{Version: "test"}).findCommand()
+	err := cmd.ParseFlags([]string{"--deep", "--verified", "--provider", "SkillMD", "--sort=newest", "--json", "react", "hooks"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(query, " "), "react hooks"; got != want {
+	if got, want := strings.Join(cmd.Flags().Args(), " "), "react hooks"; got != want {
 		t.Fatalf("query = %q, want %q", got, want)
 	}
-	if !options.Deep || !options.Verified || !options.JSON || options.Provider != "SkillMD" || options.Sort != search.SortNewest {
-		t.Fatalf("options = %#v", options)
+	deep, _ := cmd.Flags().GetBool("deep")
+	verified, _ := cmd.Flags().GetBool("verified")
+	jsonOut, _ := cmd.Flags().GetBool("json")
+	provider, _ := cmd.Flags().GetString("provider")
+	sortMode, _ := cmd.Flags().GetString("sort")
+	if !deep || !verified || !jsonOut || provider != "SkillMD" || search.SortMode(sortMode) != search.SortNewest {
+		t.Fatalf("find flags = deep:%v verified:%v json:%v provider:%q sort:%q", deep, verified, jsonOut, provider, sortMode)
 	}
 	for _, args := range [][]string{{"--sort", "oldest", "react"}, {"--provider"}, {"--unknown", "react"}} {
-		if _, _, err := parseFind(args); err == nil {
-			t.Fatalf("parseFind(%#v) succeeded", args)
+		if err := (App{Version: "test", Stderr: &bytes.Buffer{}}).Run(append([]string{"find"}, args...)); err == nil {
+			t.Fatalf("find(%#v) succeeded", args)
 		}
 	}
 }

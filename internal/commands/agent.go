@@ -7,53 +7,39 @@ import (
 	"github.com/tdeshazo/goskill/internal/agents"
 )
 
-func (a App) Agent(args []string) error {
-	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
-		fmt.Fprint(a.Stdout, agentHelp())
-		return nil
+func (a App) agentList() error {
+	registry, err := a.agentRegistry()
+	if err != nil {
+		return err
 	}
-	switch args[0] {
-	case "list":
-		if len(args) != 1 {
-			return fmt.Errorf("usage: goskill agent list")
-		}
-		registry, err := a.agentRegistry()
-		if err != nil {
-			return err
-		}
-		a.writeOut(renderAgentList(registry))
-		return nil
-	case "show":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: goskill agent show <id>")
-		}
-		registry, err := a.agentRegistry()
-		if err != nil {
-			return err
-		}
-		entry, ok := registry.Get(agents.Type(args[1]))
-		if !ok {
-			return fmt.Errorf("unknown agent %q; run goskill agent list", args[1])
-		}
-		a.writeOut(renderAgentShow(entry, registry, a.Cwd))
-		return nil
-	case "validate":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: goskill agent validate <file>")
-		}
-		configs, err := agents.LoadFile(args[1])
-		if err != nil {
-			return err
-		}
-		names := make([]string, len(configs))
-		for i, config := range configs {
-			names[i] = string(config.Name)
-		}
-		a.writeOut(renderSuccess("Agent configuration valid", strings.Join(names, ", ")))
-		return nil
-	default:
-		return fmt.Errorf("unknown agent command %q\n\n%s", args[0], agentHelp())
+	a.writeOut(renderAgentList(registry))
+	return nil
+}
+
+func (a App) agentShow(id string) error {
+	registry, err := a.agentRegistry()
+	if err != nil {
+		return err
 	}
+	entry, ok := registry.Get(agents.Type(id))
+	if !ok {
+		return fmt.Errorf("unknown agent %q; run goskill agent list", id)
+	}
+	a.writeOut(renderAgentShow(entry, registry, a.Cwd))
+	return nil
+}
+
+func (a App) agentValidate(file string) error {
+	configs, err := agents.LoadFile(file)
+	if err != nil {
+		return err
+	}
+	names := make([]string, len(configs))
+	for i, config := range configs {
+		names[i] = string(config.Name)
+	}
+	a.writeOut(renderSuccess("Agent configuration valid", strings.Join(names, ", ")))
+	return nil
 }
 
 func renderAgentList(registry *agents.Registry) string {

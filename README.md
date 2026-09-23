@@ -185,6 +185,7 @@ goskill update [skills...]
 goskill init [name]
 goskill install
 goskill sync
+goskill completion bash
 ```
 
 Aliases:
@@ -195,6 +196,15 @@ Aliases:
 - `goskill i` for `install`
 - `goskill upgrade` for `update`
 - `experimental_install` and `experimental_sync` remain accepted as legacy aliases
+
+## Shell completion
+
+Cobra generates completion scripts for Bash, Zsh, Fish, and PowerShell. Run
+`goskill completion --help` for setup instructions for your shell. For example:
+
+```bash
+source <(goskill completion bash)
+```
 
 ## Agent Skills conformance
 

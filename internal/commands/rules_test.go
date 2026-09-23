@@ -103,11 +103,11 @@ func TestRuleCommandsRejectInvalidInvocationWithoutOutput(t *testing.T) {
 		args    []string
 		wantErr string
 	}{
-		{args: []string{"rules", "extra"}, wantErr: "unknown rules option"},
+		{args: []string{"rules", "extra"}, wantErr: "unknown command"},
 		{args: []string{"rules", "--json", "--json"}, wantErr: "may only be specified once"},
-		{args: []string{"explain"}, wantErr: explainUsage},
-		{args: []string{"explain", "AS001", "AS002"}, wantErr: explainUsage},
-		{args: []string{"explain", "--unknown", "AS001"}, wantErr: "unknown explain option"},
+		{args: []string{"explain"}, wantErr: "accepts 1 arg(s)"},
+		{args: []string{"explain", "AS001", "AS002"}, wantErr: "accepts 1 arg(s)"},
+		{args: []string{"explain", "--unknown", "AS001"}, wantErr: "unknown flag"},
 		{args: []string{"explain", "ZZ999"}, wantErr: "unknown rule code \"ZZ999\""},
 		{args: []string{"explain", "aſ001"}, wantErr: "unknown rule code \"Aſ001\""},
 	}
