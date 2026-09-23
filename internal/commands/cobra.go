@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	cobra_usage "github.com/jdx/usage/integrations/cobra"
 	"github.com/spf13/cobra"
 	"github.com/tdeshazo/goskill/internal/search"
 	"github.com/tdeshazo/goskill/internal/skills"
@@ -22,7 +21,7 @@ func (a App) Run(args []string) error {
 			break
 		}
 		if arg == "--usage-spec" {
-			a.writeOut(cobra_usage.Generate(root))
+			a.writeOut(generateUsageSpec(root))
 			return nil
 		}
 	}
@@ -164,8 +163,10 @@ func (a App) addCommand() *cobra.Command {
 	f := cmd.Flags()
 	f.BoolVarP(&opts.Global, "global", "g", false, "Install globally")
 	f.StringArrayVarP(&opts.Agent, "agent", "a", nil, "Target agent (repeatable)")
+	markUsageFlagVariadic(f.Lookup("agent"))
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Accept prompts")
 	f.StringArrayVarP(&opts.Skill, "skill", "s", nil, "Select skill (repeatable)")
+	markUsageFlagVariadic(f.Lookup("skill"))
 	f.BoolVarP(&opts.List, "list", "l", false, "List discovered skills")
 	f.BoolVar(&opts.All, "all", false, "Install all skills for all agents")
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search the full source tree")
@@ -190,6 +191,9 @@ func (a App) useCommand() *cobra.Command {
 	f := cmd.Flags()
 	f.VarP(&onceString{value: &opts.Skill, repeatedError: "only one --skill value can be provided"}, "skill", "s", "Select one skill")
 	f.StringArrayVarP(&opts.Agent, "agent", "a", nil, "Launch one configured agent")
+	// `use` accepts a StringArray to share its option handling with the other
+	// commands, but validates that exactly one agent is selected.
+	markUsageFlagNonRepeatable(f.Lookup("agent"))
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search the full source tree")
 	return cmd
 }
@@ -213,6 +217,7 @@ func (a App) listCommand() *cobra.Command {
 	f := cmd.Flags()
 	f.BoolVarP(&global, "global", "g", false, "List global skills")
 	f.StringArrayVarP(&agents, "agent", "a", nil, "Filter by agent (repeatable)")
+	markUsageFlagVariadic(f.Lookup("agent"))
 	f.BoolVar(&jsonOut, "json", false, "Write JSON")
 	return cmd
 }
@@ -231,9 +236,11 @@ func (a App) removeCommand() *cobra.Command {
 	f := cmd.Flags()
 	f.BoolVarP(&opts.Global, "global", "g", false, "Remove global skills")
 	f.StringArrayVarP(&opts.Agent, "agent", "a", nil, "Target agent (repeatable)")
+	markUsageFlagVariadic(f.Lookup("agent"))
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Accept prompts")
 	f.BoolVar(&opts.All, "all", false, "Remove all matching skills")
 	f.StringArrayVarP(&skills, "skill", "s", nil, "Select skill (repeatable)")
+	markUsageFlagVariadic(f.Lookup("skill"))
 	return cmd
 }
 
@@ -443,6 +450,7 @@ func (a App) syncCommand() *cobra.Command {
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Accept prompts")
 	f.BoolVarP(&opts.Force, "force", "f", false, "Force synchronization")
 	f.StringArrayVarP(&opts.Agent, "agent", "a", nil, "Target agent (repeatable)")
+	markUsageFlagVariadic(f.Lookup("agent"))
 	return cmd
 }
 

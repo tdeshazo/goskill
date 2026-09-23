@@ -88,6 +88,121 @@ func TestCobraUsageSpecExportsOptionalVariadicSkillArgs(t *testing.T) {
 	}
 }
 
+func TestCobraUsageSpecRepeatableArrayFlags(t *testing.T) {
+	spec := generateUsageSpec((App{Version: "test"}).rootCommand())
+	tests := []struct {
+		command string
+		flag    string
+		arg     string
+	}{
+		{command: "add", flag: "-a --agent", arg: "<AGENT>"},
+		{command: "add", flag: "-s --skill", arg: "<SKILL>"},
+		{command: "list", flag: "-a --agent", arg: "<AGENT>"},
+		{command: "remove", flag: "-a --agent", arg: "<AGENT>"},
+		{command: "remove", flag: "-s --skill", arg: "<SKILL>"},
+		{command: "sync", flag: "-a --agent", arg: "<AGENT>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.command+"/"+strings.ReplaceAll(tt.flag, " ", "_"), func(t *testing.T) {
+			block := usageSpecCommandBlock(t, spec, tt.command)
+			flagLine := findUsageSpecFlagLine(t, block, tt.flag)
+			if !strings.Contains(flagLine, "var=#true") {
+				t.Fatalf("%s flag is not marked repeatable:\n%s", tt.flag, flagLine)
+			}
+			argLine := findUsageSpecArgLine(t, block, tt.arg)
+			if !strings.Contains(argLine, "var=#true") {
+				t.Fatalf("%s argument is not marked variadic:\n%s", tt.flag, argLine)
+			}
+		})
+	}
+
+	useBlock := usageSpecCommandBlock(t, spec, "use")
+	useFlag := findUsageSpecFlagLine(t, useBlock, "-a --agent")
+	if strings.Contains(useFlag, "var=#true") {
+		t.Fatalf("single-agent use flag is repeatable in Usage spec:\n%s", useFlag)
+	}
+	useArg := findUsageSpecArgLine(t, useBlock, "<AGENT>")
+	if strings.Contains(useArg, "var=#true") {
+		t.Fatalf("single-agent use argument is variadic in Usage spec:\n%s", useArg)
+	}
+
+	findBlock := usageSpecCommandBlock(t, spec, "find")
+	providerFlag := findUsageSpecFlagLine(t, findBlock, "--provider")
+	if strings.Contains(providerFlag, "var=#true") {
+		t.Fatalf("ordinary provider flag is repeatable in Usage spec:\n%s", providerFlag)
+	}
+	providerArg := findUsageSpecArgLine(t, findBlock, "<PROVIDER>")
+	if strings.Contains(providerArg, "var=#true") {
+		t.Fatalf("ordinary provider argument is variadic in Usage spec:\n%s", providerArg)
+	}
+	addBlock := usageSpecCommandBlock(t, spec, "add")
+	yesFlag := findUsageSpecFlagLine(t, addBlock, "-y --yes")
+	if strings.Contains(yesFlag, "var=#true") {
+		t.Fatalf("ordinary boolean flag is repeatable in Usage spec:\n%s", yesFlag)
+	}
+}
+
+func usageSpecCommandBlock(t *testing.T, spec, name string) string {
+	t.Helper()
+	lines := strings.Split(spec, "\n")
+	start := -1
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "cmd ") {
+			continue
+		}
+		value, ok := usageSpecNodeValue(line, "cmd")
+		if ok && value == name {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatalf("Usage spec has no %q command:\n%s", name, spec)
+	}
+	depth := 0
+	var block []string
+	for _, line := range lines[start:] {
+		block = append(block, line)
+		trimmed := strings.TrimSpace(line)
+		if strings.HasSuffix(trimmed, " {") {
+			depth++
+		} else if trimmed == "}" {
+			depth--
+			if depth == 0 {
+				break
+			}
+		}
+	}
+	return strings.Join(block, "\n")
+}
+
+func findUsageSpecFlagLine(t *testing.T, block, name string) string {
+	t.Helper()
+	for _, line := range strings.Split(block, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "flag ") {
+			continue
+		}
+		value, ok := usageSpecNodeValue(trimmed, "flag")
+		if ok && value == name {
+			return line
+		}
+	}
+	t.Fatalf("Usage spec command block has no %q flag:\n%s", name, block)
+	return ""
+}
+
+func findUsageSpecArgLine(t *testing.T, block, name string) string {
+	t.Helper()
+	for _, line := range strings.Split(block, "\n") {
+		if value, ok := usageSpecNodeValue(line, "arg"); ok && value == name {
+			return line
+		}
+	}
+	t.Fatalf("Usage spec command block has no %q argument:\n%s", name, block)
+	return ""
+}
+
 func TestCobraUsageSpecAfterTerminatorIsPositional(t *testing.T) {
 	var stdout bytes.Buffer
 	app := App{Version: "test", Stdout: &stdout, Stderr: &bytes.Buffer{}, Cwd: t.TempDir()}
