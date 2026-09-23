@@ -115,12 +115,18 @@ report version in its properties.
 **Outcome:** changes relative to the pinned reference are reviewable and
 intentional.
 
-- [ ] Report fixture-level agreement and explicitly named, justified
+- [x] Report fixture-level agreement and explicitly named, justified
       differences from `skills-ref`.
-- [ ] Make a pin update require re-review of both the specification and the
+- [x] Make a pin update require re-review of both the specification and the
       reference behavior.
-- [ ] Keep the specification authoritative when its requirements differ from
+- [x] Keep the specification authoritative when its requirements differ from
       the reference implementation.
+
+The [differential manifest](testdata/conformance/differential.json) and
+[comparison runner](scripts/conformance_diff.py) report every fixture and
+verify reviewed source identities at the pinned revision. The
+[conformance policy](docs/conformance.md#relationship-to-skills-ref) explains
+the seven intentional differences and the pin update procedure.
 
 ### 7. CI controls and reusable action
 

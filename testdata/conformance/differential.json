@@ -1,0 +1,76 @@
+{
+  "schema_version": "1",
+  "fixture_count": 29,
+  "specification": {
+    "revision": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
+    "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+    "source_oid": "d9a2db099d905da8b879a5c6f996728073985279",
+    "reviewed_revision": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
+    "review_notes": "Frontmatter field types and lengths come from the published specification; optional compatibility is non-empty when present, metadata maps string keys to string values, and allowed-tools is a space-separated string."
+  },
+  "reference": {
+    "revision": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
+    "source": "https://github.com/agentskills/agentskills/tree/69ef37e9424c0a7ea9dd2293b559e43ec8176379/skills-ref/src/skills_ref",
+    "source_oid": "e8df1f75d8f9e6a99bae6ca55e83cc859bf3f21c",
+    "reviewed_revision": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
+    "review_notes": "The parser uses StrictYAML, which converts simple YAML scalars to strings; validation checks name, description, compatibility length/type, and allowed top-level keys, but does not validate metadata or allowed-tools types."
+  },
+  "differences": [
+    {
+      "fixture": "invalid/allowed-tools-type",
+      "rule": "AS020",
+      "reason": "The specification requires a space-separated string; the reference accepts a YAML sequence.",
+      "goskill_valid": false,
+      "reference_valid": true,
+      "specification_source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx#allowed-tools-field"
+    },
+    {
+      "fixture": "invalid/compatibility-empty",
+      "rule": "AS017",
+      "reason": "The specification requires 1-500 characters when compatibility is present; the reference only checks the upper bound.",
+      "goskill_valid": false,
+      "reference_valid": true,
+      "specification_source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx#compatibility-field"
+    },
+    {
+      "fixture": "invalid/compatibility-type",
+      "rule": "AS016",
+      "reason": "The specification requires a string; StrictYAML turns the boolean scalar into text before reference validation.",
+      "goskill_valid": false,
+      "reference_valid": true,
+      "specification_source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx#compatibility-field"
+    },
+    {
+      "fixture": "invalid/description-type",
+      "rule": "AS014",
+      "reason": "The specification requires a string; StrictYAML turns the boolean scalar into text before reference validation.",
+      "goskill_valid": false,
+      "reference_valid": true,
+      "specification_source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx#description-field"
+    },
+    {
+      "fixture": "invalid/metadata-key",
+      "rule": "AS019",
+      "reason": "The specification requires string metadata keys; the reference accepts the numeric key.",
+      "goskill_valid": false,
+      "reference_valid": true,
+      "specification_source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx#metadata-field"
+    },
+    {
+      "fixture": "invalid/metadata-mapping",
+      "rule": "AS018",
+      "reason": "The specification requires a metadata mapping; the reference does not validate its shape.",
+      "goskill_valid": false,
+      "reference_valid": true,
+      "specification_source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx#metadata-field"
+    },
+    {
+      "fixture": "invalid/metadata-values",
+      "rule": "AS019",
+      "reason": "The specification requires string metadata values; the reference accepts the numeric value.",
+      "goskill_valid": false,
+      "reference_valid": true,
+      "specification_source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx#metadata-field"
+    }
+  ]
+}

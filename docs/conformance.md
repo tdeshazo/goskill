@@ -273,14 +273,43 @@ The fixture corpus under `testdata/conformance` is tested locally by Go and in
 CI against the pinned `skills-ref` reference project. The specification is the
 authority when it differs from the demonstration reference implementation.
 
-At the pinned revision, `skills-ref` does not reject an empty `compatibility`,
-non-string `allowed-tools` values, or non-mapping/non-string `metadata` keys or
-values. `goskill` rejects them because the specification defines compatibility
-as a 1-500 character string, `allowed-tools` as a space-separated string, and
-`metadata` as a map from string keys to string values. Empty string metadata
-keys remain valid. The differential CI records only these intentional
-disagreements; every other fixture outcome must agree with `skills-ref`.
+The [differential manifest](../testdata/conformance/differential.json) records
+both reviewed sources, their Git object IDs, the fixture count, and every
+justified difference with its exact specification section. CI prints the
+goskill and `skills-ref` validity result for every
+fixture, followed by agreement and difference counts. At this pin, 22 fixtures
+agree and seven intentionally differ. The comparison fails if a declared
+difference disappears, an unlisted difference appears, a fixture is added or
+removed without review, a goskill diagnostic changes, or the binary and
+checkout use different revisions.
 
-When updating the pin, update `SpecRevision`, re-review the upstream
-specification and `skills-ref` parser/validator, adjust fixtures and this
-document, and keep the CI checkout immutable.
+The seven differences cover a boolean `description`, empty or boolean
+`compatibility`, non-mapping `metadata`, numeric metadata keys or values, and
+a sequence `allowed-tools`. The pinned reference uses StrictYAML, which turns
+simple scalar booleans into strings, and omits some of the specification's
+metadata and `allowed-tools` checks. goskill follows the pinned specification's
+field requirements for all seven cases. Empty string metadata keys remain
+valid. Each manifest entry names its fixture, goskill rule, expected outcomes,
+and reason; it is an explicit review decision, not a blanket exception.
+
+To reproduce the differential check locally, check out the manifest's exact
+Agent Skills revision, run `uv sync --frozen --project` on its `skills-ref`
+directory, and activate that environment. Then build goskill and run:
+
+```bash
+go build -o /tmp/goskill-differential .
+python -m unittest scripts.test_conformance_diff
+python scripts/conformance_diff.py \
+  --goskill /tmp/goskill-differential \
+  --reference-checkout /path/to/pinned/agentskills
+```
+
+When updating the upstream pin, review the new
+`docs/specification.mdx` and `skills-ref/src/skills_ref` behavior separately.
+Update `SpecRevision`, the immutable CI checkout ref, both revision and review
+records in the differential manifest, and the specification blob and reference
+source-tree Git object IDs. Replay every fixture against both implementations;
+update named differences, fixture expectations, rule metadata, and this policy
+as needed. CI verifies the review records and source object IDs against the
+checkout and rejects an incomplete pin update. The recorded review notes
+explain why goskill follows the specification where the reference differs.
