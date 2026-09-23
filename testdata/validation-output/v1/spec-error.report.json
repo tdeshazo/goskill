@@ -1,0 +1,190 @@
+{
+  "schema_version": "1",
+  "profile": "spec",
+  "valid": false,
+  "summary": {
+    "skills": 2,
+    "diagnostics": 1,
+    "errors": 1,
+    "warnings": 0
+  },
+  "specification": {
+    "versioning_status": "upstream unversioned; identified by immutable Git revision",
+    "revision": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
+    "canonical_url": "https://agentskills.io/specification",
+    "pinned_source_url": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+  },
+  "rules": [
+    {
+      "code": "AS001",
+      "summary": "SKILL.md is required and readable",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS002",
+      "summary": "YAML frontmatter is required",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS003",
+      "summary": "frontmatter must be valid YAML mapping",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS004",
+      "summary": "only specified frontmatter fields are allowed",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS005",
+      "summary": "name is required",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS006",
+      "summary": "name must be a non-empty string",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS007",
+      "summary": "name must be at most 64 characters",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS008",
+      "summary": "name must be lowercase",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS009",
+      "summary": "name cannot start or end with a hyphen",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS010",
+      "summary": "name cannot contain consecutive hyphens",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS011",
+      "summary": "name may contain only letters, digits, and hyphens",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS012",
+      "summary": "name must match its parent directory",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS013",
+      "summary": "description is required",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS014",
+      "summary": "description must be a non-empty string",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS015",
+      "summary": "description must be at most 1024 characters",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS016",
+      "summary": "compatibility must be a string",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS017",
+      "summary": "compatibility must be between 1 and 500 characters",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS018",
+      "summary": "metadata must be a mapping",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS019",
+      "summary": "metadata keys and values must be strings",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    },
+    {
+      "code": "AS020",
+      "summary": "allowed-tools must be a string",
+      "severity": "error",
+      "profile": "spec",
+      "source": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+    }
+  ],
+  "files": [
+    {
+      "path": "https://example.invalid/spec/bAd-skill/SKILL.md",
+      "valid": false,
+      "diagnostics": [
+        {
+          "code": "AS008",
+          "severity": "error",
+          "message": "name must be lowercase",
+          "path": "https://example.invalid/spec/bAd-skill/SKILL.md",
+          "line": 2,
+          "column": 7
+        }
+      ]
+    },
+    {
+      "path": "https://example.invalid/spec/valid/SKILL.md",
+      "valid": true,
+      "diagnostics": []
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "AS008",
+      "severity": "error",
+      "message": "name must be lowercase",
+      "path": "https://example.invalid/spec/bAd-skill/SKILL.md",
+      "line": 2,
+      "column": 7
+    }
+  ]
+}

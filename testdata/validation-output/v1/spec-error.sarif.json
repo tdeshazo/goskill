@@ -1,0 +1,370 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "goskill",
+          "informationUri": "https://github.com/tdeshazo/goskill",
+          "rules": [
+            {
+              "id": "AS001",
+              "name": "AS001",
+              "shortDescription": {
+                "text": "SKILL.md is required and readable"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS002",
+              "name": "AS002",
+              "shortDescription": {
+                "text": "YAML frontmatter is required"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS003",
+              "name": "AS003",
+              "shortDescription": {
+                "text": "frontmatter must be valid YAML mapping"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS004",
+              "name": "AS004",
+              "shortDescription": {
+                "text": "only specified frontmatter fields are allowed"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS005",
+              "name": "AS005",
+              "shortDescription": {
+                "text": "name is required"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS006",
+              "name": "AS006",
+              "shortDescription": {
+                "text": "name must be a non-empty string"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS007",
+              "name": "AS007",
+              "shortDescription": {
+                "text": "name must be at most 64 characters"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS008",
+              "name": "AS008",
+              "shortDescription": {
+                "text": "name must be lowercase"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS009",
+              "name": "AS009",
+              "shortDescription": {
+                "text": "name cannot start or end with a hyphen"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS010",
+              "name": "AS010",
+              "shortDescription": {
+                "text": "name cannot contain consecutive hyphens"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS011",
+              "name": "AS011",
+              "shortDescription": {
+                "text": "name may contain only letters, digits, and hyphens"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS012",
+              "name": "AS012",
+              "shortDescription": {
+                "text": "name must match its parent directory"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS013",
+              "name": "AS013",
+              "shortDescription": {
+                "text": "description is required"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS014",
+              "name": "AS014",
+              "shortDescription": {
+                "text": "description must be a non-empty string"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS015",
+              "name": "AS015",
+              "shortDescription": {
+                "text": "description must be at most 1024 characters"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS016",
+              "name": "AS016",
+              "shortDescription": {
+                "text": "compatibility must be a string"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS017",
+              "name": "AS017",
+              "shortDescription": {
+                "text": "compatibility must be between 1 and 500 characters"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS018",
+              "name": "AS018",
+              "shortDescription": {
+                "text": "metadata must be a mapping"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS019",
+              "name": "AS019",
+              "shortDescription": {
+                "text": "metadata keys and values must be strings"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            },
+            {
+              "id": "AS020",
+              "name": "AS020",
+              "shortDescription": {
+                "text": "allowed-tools must be a string"
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "helpUri": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx",
+              "properties": {
+                "goskill_profile": "spec"
+              }
+            }
+          ],
+          "properties": {
+            "goskill_profile": "spec",
+            "goskill_validation_schema_version": "1",
+            "goskill_summary": {
+              "skills": 2,
+              "diagnostics": 1,
+              "errors": 1,
+              "warnings": 0
+            },
+            "goskill_specification": {
+              "versioning_status": "upstream unversioned; identified by immutable Git revision",
+              "revision": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
+              "canonical_url": "https://agentskills.io/specification",
+              "pinned_source_url": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+            }
+          }
+        }
+      },
+      "artifacts": [
+        {
+          "location": {
+            "uri": "https://example.invalid/spec/bAd-skill/SKILL.md"
+          }
+        },
+        {
+          "location": {
+            "uri": "https://example.invalid/spec/valid/SKILL.md"
+          }
+        }
+      ],
+      "results": [
+        {
+          "ruleId": "AS008",
+          "level": "error",
+          "message": {
+            "text": "name must be lowercase"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "https://example.invalid/spec/bAd-skill/SKILL.md"
+                },
+                "region": {
+                  "startLine": 2,
+                  "startColumn": 7
+                }
+              }
+            }
+          ],
+          "properties": {
+            "code": "AS008",
+            "severity": "error",
+            "message": "name must be lowercase",
+            "path": "https://example.invalid/spec/bAd-skill/SKILL.md",
+            "line": 2,
+            "column": 7
+          }
+        }
+      ],
+      "properties": {
+        "goskill_profile": "spec",
+        "goskill_validation_schema_version": "1",
+        "goskill_summary": {
+          "skills": 2,
+          "diagnostics": 1,
+          "errors": 1,
+          "warnings": 0
+        },
+        "goskill_specification": {
+          "versioning_status": "upstream unversioned; identified by immutable Git revision",
+          "revision": "69ef37e9424c0a7ea9dd2293b559e43ec8176379",
+          "canonical_url": "https://agentskills.io/specification",
+          "pinned_source_url": "https://github.com/agentskills/agentskills/blob/69ef37e9424c0a7ea9dd2293b559e43ec8176379/docs/specification.mdx"
+        }
+      }
+    }
+  ]
+}

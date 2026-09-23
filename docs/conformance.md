@@ -163,6 +163,70 @@ still exits nonzero, but its complete JSON/SARIF document is the only stdout
 content. Invalid format flags, invalid sources, and other operational failures
 produce normal command errors instead of a partial report.
 
+### JSON report contract (v1)
+
+The published [v1 JSON Schema](../schemas/validation-report.v1.schema.json)
+describes `goskill validate --format json`. Its `schema_version` is the string
+`"1"`. This is the report format version, separate from the goskill build
+version and the pinned Agent Skills specification revision. Consumers should
+check `schema_version` before reading the report and ignore unknown object
+fields within a supported version.
+
+| Field | Meaning |
+| --- | --- |
+| `profile` | Active `spec`, `recommended`, or `portable` policy. |
+| `valid` | `true` exactly when the report has no error diagnostics. Warnings do not make it false. |
+| `summary` | `skills` counts file entries; `diagnostics` is `errors + warnings` across those files. |
+| `specification` | Upstream versioning status, immutable Git revision, canonical URL, and pinned source URL. |
+| `rules` | The complete catalog enabled by the selected profile, including rules that did not fire. Each rule has a stable code, summary, severity, minimum enabling profile, and a `source` URL or `rationale` (or both). |
+| `files` | File reports with `path`, `valid`, and a `diagnostics` array. A file is valid when it has no errors. |
+| `diagnostics` | The complete report-wide diagnostic list. Each entry has `code`, `severity`, `message`, `path`, `line`, and `column`. |
+
+`files` and `diagnostics` are arrays even when empty. File reports are ordered
+by path; diagnostics are ordered by path, line, column, and code. The
+report-wide diagnostics repeat the entries in `files[].diagnostics` so clients
+can choose either view. Local paths are absolute; remote-source paths use a
+stable source URL rather than a temporary clone path. Locations are 1-based;
+file-level findings use `1:1` as described above.
+
+### SARIF mapping and compatibility
+
+SARIF output uses the [SARIF 2.1.0
+schema](https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json).
+The SARIF `version` and `$schema` identify that standard. Goskill's own report
+contract version appears as `goskill_validation_schema_version` in both
+`runs[0].properties` and `runs[0].tool.driver.properties`; it is `"1"` for
+the current format. Those property bags also carry `goskill_profile`,
+`goskill_summary`, and `goskill_specification` with the same meanings as JSON.
+
+The active rule catalog is in `runs[0].tool.driver.rules`, with the stable code
+as `id`, severity as `defaultConfiguration.level`, authoritative `source` as
+`helpUri` when available, and minimum profile and rationale in
+`goskill_profile` and `goskill_rationale` properties. Each diagnostic becomes a
+SARIF result with the code as `ruleId`, severity as `level`, a physical artifact
+URI and 1-based source region, and the full JSON diagnostic fields in
+`result.properties`. Local artifact URIs use `file://`; remote artifact URIs
+retain their source URL. `runs[0].artifacts` is sorted by URI and
+`runs[0].results` follows diagnostic order.
+
+Within v1, existing required fields, their types, profile and severity values,
+the validity/count meanings, location convention, and rule code identities
+remain stable. Optional fields and new rule codes may be added; consumers
+should ignore unknown fields and codes. Diagnostic messages, rule summaries,
+evidence URLs, the pinned upstream revision, and which rules fire for an input
+may change without a report schema version change. Scripts should select by
+rule code and severity rather than parse message text.
+
+Any breaking shape or meaning change requires a new versioned schema file, a
+new report version marker in JSON and SARIF, and new fixtures. The v1 schema
+file remains available for consumers pinned to v1. Additive v1 fields require
+an intentional schema and fixture update in the same change. The checked-in
+[machine-output fixtures](../testdata/validation-output/v1) cover all three
+profiles, precise and fallback locations, source and rationale rule metadata,
+valid warning-only output, and mixed error/warning summaries. After reviewing
+a contract change, regenerate them with
+`UPDATE_VALIDATION_FIXTURES=1 go test ./internal/commands -run TestValidationMachineOutputFixtures`.
+
 ## Rule catalog discovery
 
 `goskill rules` lists every stable validation rule in the catalog order used by

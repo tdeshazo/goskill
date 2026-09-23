@@ -97,12 +97,18 @@ than assumptions about clients.
 
 **Outcome:** integrations can safely consume reports across goskill releases.
 
-- [ ] Document JSON and SARIF metadata, schema evolution, and compatibility
+- [x] Document JSON and SARIF metadata, schema evolution, and compatibility
       expectations.
-- [ ] Add machine-output fixtures for locations, rule metadata, profiles, and
+- [x] Add machine-output fixtures for locations, rule metadata, profiles, and
       error/warning summaries.
-- [ ] Version any published schemas deliberately rather than changing fields
+- [x] Version any published schemas deliberately rather than changing fields
       implicitly.
+
+The [v1 JSON report schema](schemas/validation-report.v1.schema.json),
+[compatibility contract](docs/conformance.md#json-report-contract-v1), and
+[`testdata/validation-output/v1`](testdata/validation-output/v1) fixtures pin
+the machine-output surface. SARIF remains at 2.1.0 and carries the goskill
+report version in its properties.
 
 ### 6. Differential reporting
 
@@ -133,7 +139,6 @@ repeatable CI behavior.
   `GS210` is currently warning-only.
 - How guidance should measure tokens, if token-based guidance is added.
 - What reproducible client behavior is sufficient portability evidence.
-- Which JSON and SARIF schema-compatibility guarantees goskill will make.
 
 ## Non-goals
 

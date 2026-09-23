@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/tdeshazo/goskill/main/schemas/validation-report.v1.schema.json",
+  "title": "goskill validation report v1",
+  "description": "JSON output from goskill validate --format json. Unknown object properties are allowed for compatible additions.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "profile",
+    "valid",
+    "summary",
+    "specification",
+    "rules",
+    "files",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": { "const": "1" },
+    "profile": { "$ref": "#/$defs/profile" },
+    "valid": { "type": "boolean" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "specification": { "$ref": "#/$defs/specification" },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" }
+    },
+    "files": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/file" }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "string",
+      "enum": ["spec", "recommended", "portable"]
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["error", "warning"]
+    },
+    "summary": {
+      "type": "object",
+      "required": ["skills", "diagnostics", "errors", "warnings"],
+      "properties": {
+        "skills": { "type": "integer", "minimum": 0 },
+        "diagnostics": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "specification": {
+      "type": "object",
+      "required": ["versioning_status", "revision", "canonical_url", "pinned_source_url"],
+      "properties": {
+        "versioning_status": { "type": "string" },
+        "revision": { "type": "string" },
+        "canonical_url": { "type": "string", "format": "uri" },
+        "pinned_source_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["code", "summary", "severity", "profile"],
+      "anyOf": [
+        { "required": ["source"] },
+        { "required": ["rationale"] }
+      ],
+      "properties": {
+        "code": { "type": "string" },
+        "summary": { "type": "string" },
+        "severity": { "$ref": "#/$defs/severity" },
+        "profile": { "$ref": "#/$defs/profile" },
+        "source": { "type": "string", "format": "uri", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "file": {
+      "type": "object",
+      "required": ["path", "valid", "diagnostics"],
+      "properties": {
+        "path": { "type": "string" },
+        "valid": { "type": "boolean" },
+        "diagnostics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/diagnostic" }
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "message", "path", "line", "column"],
+      "properties": {
+        "code": { "type": "string" },
+        "severity": { "$ref": "#/$defs/severity" },
+        "message": { "type": "string" },
+        "path": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

@@ -280,7 +280,9 @@ Validation diagnostics use 1-based source locations. JSON includes the active
 profile's rule catalog with profile and provenance metadata; SARIF carries the
 same catalog as driver rules, and text output shows each finding's location and
 rule provenance. See the [conformance contract](docs/conformance.md) for the
-fallback-location convention.
+fallback-location convention, [v1 JSON report
+schema](schemas/validation-report.v1.schema.json), and machine-output
+compatibility policy.
 
 Validation profiles make the policy explicit:
 
