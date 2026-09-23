@@ -56,6 +56,38 @@ func TestCobraUsageSpec(t *testing.T) {
 	}
 }
 
+func TestCobraUsageSpecExportsOptionalVariadicSkillArgs(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	app := App{Version: "test", Stdout: &stdout, Stderr: &stderr, Cwd: t.TempDir()}
+	if err := app.Run([]string{"--usage-spec"}); err != nil {
+		t.Fatalf("Run(--usage-spec) error = %v", err)
+	}
+
+	const wantArg = `    arg "[skills]…" required=#false var=#true`
+	usage := stdout.String()
+	for _, name := range []string{"remove", "validate", "check", "update"} {
+		t.Run(name, func(t *testing.T) {
+			cmdMarker := "\ncmd " + name + " "
+			cmdMarkerIndex := strings.Index(usage, cmdMarker)
+			if cmdMarkerIndex == -1 {
+				t.Fatalf("usage spec missing %q command:\n%s", name, usage)
+			}
+			cmdStart := cmdMarkerIndex + 1
+
+			cmdEnd := len(usage)
+			if nextCommand := strings.Index(usage[cmdStart+1:], "\ncmd "); nextCommand != -1 {
+				cmdEnd = cmdStart + 1 + nextCommand
+			}
+			if !strings.Contains(usage[cmdStart:cmdEnd], wantArg) {
+				t.Fatalf("usage spec command %q missing optional variadic skill arg %q:\n%s", name, wantArg, usage[cmdStart:cmdEnd])
+			}
+		})
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(--usage-spec) wrote to stderr: %q", stderr.String())
+	}
+}
+
 func TestCobraUsageSpecAfterTerminatorIsPositional(t *testing.T) {
 	var stdout bytes.Buffer
 	app := App{Version: "test", Stdout: &stdout, Stderr: &bytes.Buffer{}, Cwd: t.TempDir()}

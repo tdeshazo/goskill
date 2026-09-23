@@ -221,7 +221,7 @@ func (a App) removeCommand() *cobra.Command {
 	var opts RemoveOptions
 	var skills []string
 	cmd := &cobra.Command{
-		Use:     "remove [skills...]",
+		Use:     "remove [skills]...",
 		Aliases: []string{"rm", "r"},
 		Short:   "Remove installed skills",
 		RunE: func(_ *cobra.Command, args []string) error {
@@ -272,7 +272,7 @@ func (a App) validateCommand() *cobra.Command {
 	format, profile := "text", "spec"
 	var jsonOut, sarifOut, versionInfo bool
 	cmd := &cobra.Command{
-		Use:   "validate [skills...]",
+		Use:   "validate [skills]...",
 		Short: "Validate SKILL.md files",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonOut && sarifOut || cmd.Flags().Changed("format") && (jsonOut || sarifOut) {
@@ -455,7 +455,7 @@ func (a App) checkCommand(update bool) *cobra.Command {
 		short = "Update locked skills"
 	}
 	cmd := &cobra.Command{
-		Use:   name + " [skills...]",
+		Use:   name + " [skills]...",
 		Short: short,
 		RunE: func(_ *cobra.Command, args []string) error {
 			opts.Skills = args
