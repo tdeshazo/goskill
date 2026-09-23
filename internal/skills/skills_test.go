@@ -529,6 +529,16 @@ func TestValidationSkillFileFallsBackWhenDirectoryCannotBeListed(t *testing.T) {
 			} else if err := os.WriteFile(filepath.Join(dir, test.filename), content, 0o644); err != nil {
 				t.Fatal(err)
 			}
+			otherName := "SKILL.md"
+			if test.filename == otherName {
+				otherName = "skill.md"
+			}
+			actualInfo, err := os.Stat(filepath.Join(dir, test.filename))
+			if err != nil {
+				t.Fatal(err)
+			}
+			otherInfo, otherErr := os.Stat(filepath.Join(dir, otherName))
+			caseInsensitiveAlias := otherErr == nil && os.SameFile(actualInfo, otherInfo)
 			if err := os.Chmod(dir, 0o111); err != nil {
 				t.Fatal(err)
 			}
@@ -538,7 +548,9 @@ func TestValidationSkillFileFallsBackWhenDirectoryCannotBeListed(t *testing.T) {
 			}
 
 			path, ok := ValidationSkillFile(dir)
-			if !ok || filepath.Base(path) != test.filename {
+			// Search-only directories cannot reveal entry casing on a
+			// case-insensitive filesystem; both spellings name the same file.
+			if !ok || (!caseInsensitiveAlias && filepath.Base(path) != test.filename) {
 				t.Fatalf("ValidationSkillFile() fallback = %q, %v; want %q", path, ok, test.filename)
 			}
 			if diagnostics := ValidateSkillDirectory(dir); len(diagnostics) != 0 {

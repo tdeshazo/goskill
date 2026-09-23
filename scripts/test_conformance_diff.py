@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 from scripts import conformance_diff
 
-
 CORPUS = conformance_diff.ROOT / "testdata/conformance"
 
 
@@ -23,13 +22,15 @@ class DifferentialTest(unittest.TestCase):
                 return True, []
             return False, [(fixture / "expected.txt").read_text().strip()]
 
-        with patch.object(
-            conformance_diff, "goskill_outcome", side_effect=goskill_outcome
+        with (
+            patch.object(
+                conformance_diff, "goskill_outcome", side_effect=goskill_outcome
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
         ):
-            with contextlib.redirect_stdout(io.StringIO()):
-                return conformance_diff.compare(
-                    self.manifest, CORPUS, Path("goskill"), reference_validate
-                )
+            return conformance_diff.compare(
+                self.manifest, CORPUS, Path("goskill"), reference_validate
+            )
 
     def test_reviewed_outcomes_pass(self):
         differences = {item["fixture"] for item in self.manifest["differences"]}
@@ -97,16 +98,14 @@ class DifferentialTest(unittest.TestCase):
         class Result:
             stdout = revision
 
-        with patch.object(
-            conformance_diff, "git_value", side_effect=lambda _, key: oids[key]
+        with (
+            patch.object(
+                conformance_diff, "git_value", side_effect=lambda _, key: oids[key]
+            ),
+            patch.object(conformance_diff.subprocess, "run", return_value=Result()),
+            self.assertRaisesRegex(ValueError, "needs a review"),
         ):
-            with patch.object(
-                conformance_diff.subprocess, "run", return_value=Result()
-            ):
-                with self.assertRaisesRegex(ValueError, "needs a review"):
-                    conformance_diff.check_pin(
-                        self.manifest, Path("checkout"), Path("goskill")
-                    )
+            conformance_diff.check_pin(self.manifest, Path("checkout"), Path("goskill"))
 
 
 if __name__ == "__main__":
