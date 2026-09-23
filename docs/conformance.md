@@ -89,7 +89,8 @@ with `schema_version: "1"` and four required top-level fields:
   HTTPS immutable source URL bound to that implementation path and exact
   revision, the revision again, a reproducible `method`, and the
   SHA-256 `artifact_sha256` of the fixture directory (the same deterministic
-  hash produced by `skills.FolderHash`).
+  hash produced by `skills.FolderHash`). Fixture files are checked out with LF
+  line endings so this byte hash is stable on Windows.
 
 Supported source forms are `https://host/owner/repository/tree/<sha>` and
 `https://host/owner/repository/-/tree/<sha>`, each with an optional
@@ -223,7 +224,8 @@ file remains available for consumers pinned to v1. Additive v1 fields require
 an intentional schema and fixture update in the same change. The checked-in
 [machine-output fixtures](../testdata/validation-output/v1) cover all three
 profiles, precise and fallback locations, source and rationale rule metadata,
-valid warning-only output, and mixed error/warning summaries. After reviewing
+valid warning-only output, and mixed error/warning summaries. They are checked
+out with LF line endings on every platform. After reviewing
 a contract change, regenerate them with
 `UPDATE_VALIDATION_FIXTURES=1 go test ./internal/commands -run TestValidationMachineOutputFixtures`.
 

@@ -317,6 +317,9 @@ func artifactURI(path string) string {
 	if parsedURL, err := url.Parse(path); err == nil && parsedURL.Scheme != "" && (parsedURL.Host != "" || parsedURL.Scheme == "file") {
 		return parsedURL.String()
 	}
+	if strings.HasPrefix(path, "/") {
+		return (&url.URL{Scheme: "file", Path: path}).String()
+	}
 	if absolute, err := filepath.Abs(path); err == nil {
 		path = absolute
 	}
