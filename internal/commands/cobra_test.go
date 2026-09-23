@@ -43,7 +43,8 @@ func TestCobraUsageSpec(t *testing.T) {
 			"flag --provider ",
 			"arg \"[query]…\" required=#false var=#true\n",
 			"cmd use ",
-			"arg \"[source]\" required=#false\n",
+			"long_help \"Use a skill without installing it. A source may include an @skill selector.\"",
+			"arg <source>\n",
 		} {
 			if !strings.Contains(got, want) {
 				t.Errorf("Run(%v) usage spec missing %q:\n%s", args, want, got)

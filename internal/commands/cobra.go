@@ -176,7 +176,7 @@ func (a App) addCommand() *cobra.Command {
 func (a App) useCommand() *cobra.Command {
 	var opts UseOptions
 	cmd := &cobra.Command{
-		Use:   "use [source]",
+		Use:   "use <source>",
 		Short: "Use a skill without installing it",
 		Long:  "Use a skill without installing it. A source may include an @skill selector.",
 		Args:  cobra.MaximumNArgs(1),
