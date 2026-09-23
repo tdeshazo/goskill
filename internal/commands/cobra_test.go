@@ -26,6 +26,46 @@ func TestCobraHelpAndCompletion(t *testing.T) {
 	}
 }
 
+func TestCobraUsageSpec(t *testing.T) {
+	for _, args := range [][]string{{"--usage-spec"}, {"find", "--usage-spec"}} {
+		var stdout, stderr bytes.Buffer
+		app := App{Version: "test-version", Stdout: &stdout, Stderr: &stderr, Cwd: t.TempDir()}
+		if err := app.Run(args); err != nil {
+			t.Fatalf("Run(%v) error = %v", args, err)
+		}
+		got := stdout.String()
+		for _, want := range []string{
+			"name goskill\n",
+			"bin goskill\n",
+			"version test-version\n",
+			"cmd add ",
+			"alias search f s\n",
+			"flag --provider ",
+			"arg \"[query]…\" required=#false var=#true\n",
+			"cmd use ",
+			"arg \"[source]\" required=#false\n",
+		} {
+			if !strings.Contains(got, want) {
+				t.Errorf("Run(%v) usage spec missing %q:\n%s", args, want, got)
+			}
+		}
+		if strings.Contains(got, "\x1b[") || stderr.Len() != 0 {
+			t.Errorf("Run(%v) emitted terminal output: stderr %q", args, stderr.String())
+		}
+	}
+}
+
+func TestCobraUsageSpecAfterTerminatorIsPositional(t *testing.T) {
+	var stdout bytes.Buffer
+	app := App{Version: "test", Stdout: &stdout, Stderr: &bytes.Buffer{}, Cwd: t.TempDir()}
+	if err := app.Run([]string{"--", "--usage-spec"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout.String(), "The open agent skills ecosystem") {
+		t.Fatalf("expected banner after -- terminator, got %q", stdout.String())
+	}
+}
+
 func TestCobraRunEmptyArgsShowsBanner(t *testing.T) {
 	for _, tc := range []struct {
 		name string

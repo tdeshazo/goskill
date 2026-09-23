@@ -206,6 +206,19 @@ Cobra generates completion scripts for Bash, Zsh, Fish, and PowerShell. Run
 source <(goskill completion bash)
 ```
 
+## Usage spec
+
+`goskill --usage-spec` prints a [Usage](https://usage.jdx.dev/spec/) spec in
+KDL for the current command tree. It includes commands, aliases, arguments,
+flags, and the binary version. The output is suitable for the optional
+[Usage CLI](https://usage.jdx.dev/cli/) to generate documentation or other
+completion scripts:
+
+```bash
+goskill --usage-spec | usage generate markdown -f -
+goskill --usage-spec | usage generate completion bash goskill -f -
+```
+
 ## Agent Skills conformance
 
 See the [validation roadmap](ROADMAP.md) for completed foundations, planned

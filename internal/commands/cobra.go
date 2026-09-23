@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	cobra_usage "github.com/jdx/usage/integrations/cobra"
 	"github.com/spf13/cobra"
 	"github.com/tdeshazo/goskill/internal/search"
 	"github.com/tdeshazo/goskill/internal/skills"
@@ -15,10 +16,19 @@ import (
 // Run executes the CLI through Cobra. A new command tree is built for each run
 // so tests and embedded callers do not share flag state.
 func (a App) Run(args []string) error {
+	root := a.rootCommand()
+	for _, arg := range args {
+		if arg == "--" {
+			break
+		}
+		if arg == "--usage-spec" {
+			a.writeOut(cobra_usage.Generate(root))
+			return nil
+		}
+	}
 	if err := validateFindProviderValue(args); err != nil {
 		return err
 	}
-	root := a.rootCommand()
 	args = expandVariadicFlags(args)
 	if args == nil {
 		args = []string{}
@@ -166,8 +176,9 @@ func (a App) addCommand() *cobra.Command {
 func (a App) useCommand() *cobra.Command {
 	var opts UseOptions
 	cmd := &cobra.Command{
-		Use:   "use <source>[@<skill>]",
+		Use:   "use [source]",
 		Short: "Use a skill without installing it",
+		Long:  "Use a skill without installing it. A source may include an @skill selector.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -230,9 +241,10 @@ func (a App) findCommand() *cobra.Command {
 	var opts FindOptions
 	var sortMode string
 	cmd := &cobra.Command{
-		Use:     "find [options] <query>",
+		Use:     "find [options] [query]...",
 		Aliases: []string{"search", "f", "s"},
 		Short:   "Search skill registries",
+		Long:    "Search skill registries. A query is required unless --providers is set.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Sort = search.SortMode(strings.ToLower(strings.TrimSpace(sortMode)))
 			if !opts.Sort.Valid() {

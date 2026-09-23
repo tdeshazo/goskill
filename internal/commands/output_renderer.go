@@ -112,6 +112,7 @@ func renderHelp() string {
 		selectorTitleStyle.Render("goskill <command> [options]"),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("commands:"), commands),
 		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("agents:"), "run goskill agent list"),
+		fmt.Sprintf("%s %s", selectorSuccessStyle.Render("usage spec:"), "run goskill --usage-spec"),
 	)
 }
 
